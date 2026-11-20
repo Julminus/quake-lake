@@ -44,15 +44,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         # still shows what reached bronze.
         for step in steps:
             for w in step():
-                print(f"{w.key}  {w.events} events  {w.size:,} bytes", flush=True)
+                print(f"{w.key}  {_count(w.events, 'event')}  {w.size:,} bytes", flush=True)
                 objects, events, size = objects + 1, events + w.events, size + w.size
     except (FetchError, IngestError, ValueError, OSError, BotoCoreError, ClientError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     seconds = time.perf_counter() - started
-    print(f"wrote {objects} objects to {storage.uri}: ", end="")
-    print(f"{events:,} events, {size:,} bytes in {seconds:.1f} s")
+    print(f"wrote {_count(objects, 'object')} to {storage.uri}: ", end="")
+    print(f"{_count(events, 'event')}, {size:,} bytes in {seconds:.1f} s")
     return 0
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n:,} {noun}" if n == 1 else f"{n:,} {noun}s"
 
 
 def _parser() -> argparse.ArgumentParser:

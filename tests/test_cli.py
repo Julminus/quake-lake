@@ -28,7 +28,7 @@ def test_backfill_writes_one_object_per_month(net, tmp_path, capsys):
 def test_default_is_the_last_seven_days(net, tmp_path, capsys):
     assert main(["usgs", "--bronze", str(tmp_path)]) == 0
     assert len(net.urls) == 1
-    assert "wrote 1 objects" in capsys.readouterr().out
+    assert "wrote 1 object to " in capsys.readouterr().out
 
 
 def test_bmkg(net, tmp_path, capsys):
