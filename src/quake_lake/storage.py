@@ -9,6 +9,7 @@ credentials from the usual chain, and a non-AWS server (MinIO) through
 from __future__ import annotations
 
 import os
+import uuid
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -37,10 +38,17 @@ class LocalStorage:
     def put(self, key: str, data: bytes) -> None:
         path = self.root / key
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Write then rename, so a crash never leaves a half-written object behind.
-        tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        tmp.write_bytes(data)
-        os.replace(tmp, path)
+        # Write a temp file unique to this call, then rename it over the key: a reader
+        # sees the old object or the new one, never half of one, even with two
+        # writers. shortcut: on Windows, a second writer or an open reader of the
+        # same key makes os.replace fail (it raises; nothing half-written lands);
+        # bronze keys carry a timestamp, so this needs two runs in the same second.
+        tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp.write_bytes(data)
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)  # only still there if the write or rename failed
 
     def get(self, key: str) -> bytes:
         return (self.root / key).read_bytes()
@@ -84,6 +92,9 @@ class S3Storage:
 
 def open_storage(uri: str) -> Storage:
     """``s3://bucket[/prefix]`` or a local folder path."""
+    if not uri.strip():
+        # Path("") is the current directory: an unset variable must not write there.
+        raise ValueError("empty storage URI: give a folder or s3://bucket/prefix")
     if uri.startswith("s3://"):
         bucket, _, prefix = uri.removeprefix("s3://").partition("/")
         if not bucket:
