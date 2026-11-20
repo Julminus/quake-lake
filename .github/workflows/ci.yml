@@ -92,5 +92,5 @@ jobs:
           done
           cat lambda.json
           grep -q '"errorType": "ValueError"' lambda.json
-          grep -q "'sources' must be a non-empty list" lambda.json
+          grep -q "'sources' must list some of" lambda.json
           docker stop lambda
