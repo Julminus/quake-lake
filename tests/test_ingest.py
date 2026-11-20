@@ -46,10 +46,11 @@ def test_backfill_since_2015_is_one_query_per_month():
 def test_month_windows_empty_and_zone_aware():
     assert month_windows(NOW, NOW) == []
     assert month_windows(NOW, NOW - timedelta(days=1)) == []
-    # 2026-03-01 07:00 WIB is midnight UTC: the first window ends at the next UTC month.
-    assert month_windows(datetime(2026, 3, 1, 7, tzinfo=WIB), utc(2026, 5, 1))[0][1] == utc(
-        2026, 4, 1
-    )
+    # 05:00 WIB on 1 March is still 28 February in UTC, so the first window is the
+    # last two hours of February: months are UTC months, not the caller's.
+    windows = month_windows(datetime(2026, 3, 1, 5, tzinfo=WIB), utc(2026, 5, 1))
+    assert windows[0] == (utc(2026, 2, 28, 22), utc(2026, 3, 1))
+    assert len(windows) == 3
 
 
 def test_naive_times_are_refused():
