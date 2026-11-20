@@ -21,5 +21,5 @@ Indonesia, Docker 29.9.3. The README quotes these files.
 - **Image size:** `quake-lake:dev` is 233,445,845 bytes (`docker image inspect`), mostly
   boto3 and botocore.
 - **Test suite:** `uv run pytest -q`, three runs: 12.11 to 12.20 s before commit `ef91452`,
-  2.14 to 2.15 s after. Review rounds 2 and 3 added 11 tests, one of which waits 0.6 s on a
+  2.14 to 2.15 s after. Review rounds 2 and 3 added 11 tests, one of which waits 0.3 s for a
   stalled server: 2.61 to 2.72 s for the final 106.

@@ -162,8 +162,12 @@ BIG_GZIP_ERROR = gzip.compress(
 def test_a_gzip_error_body_cut_short_still_gives_its_reason(server, length, body):
     assert len(BIG_GZIP_ERROR) > 65536
     server.script = [(400, {"Content-Encoding": "gzip", "Content-Length": str(length)}, body)]
-    with pytest.raises(FetchError, match=r"failed: HTTP 400: Error 400: bad starttime [0-9a-f]+$"):
+    with pytest.raises(
+        FetchError, match=r"failed: HTTP 400: Error 400: bad starttime [0-9a-f]+$"
+    ) as e:
         fetch(server.url)
+    # Only the first 300 bytes are decoded: a small gzip body can expand to megabytes.
+    assert len(str(e.value).split("failed: HTTP 400: ", 1)[1]) == 300
 
 
 def test_a_cut_error_body_still_gives_its_reason(server):
