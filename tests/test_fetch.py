@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import gzip
-import socket
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,7 +11,10 @@ from quake_lake.fetch import USER_AGENT, FetchError, _seconds, fetch
 
 
 class Server:
-    """A real local HTTP server that plays back a script of (status, headers, body)."""
+    """A real local HTTP server that plays back a script of (status, headers, body).
+
+    Status 0 hangs up without answering, which the client sees as a network error.
+    """
 
     def __init__(self) -> None:
         self.script: list[tuple[int, dict[str, str], bytes]] = []
@@ -25,6 +27,9 @@ class Server:
                 server.user_agents.append(self.headers.get("User-Agent"))
                 server.accept_encodings.append(self.headers.get("Accept-Encoding"))
                 status, headers, body = server.script.pop(0)
+                if status == 0:
+                    self.close_connection = True
+                    return
                 self.send_response(status)
                 for k, v in headers.items():
                     self.send_header(k, v)
@@ -43,7 +48,8 @@ class Server:
 @pytest.fixture
 def server() -> Iterator[Server]:
     s = Server()
-    thread = threading.Thread(target=s.httpd.serve_forever, daemon=True)
+    # shutdown() waits for the next poll: the default 0.5 s cost every test half a second.
+    thread = threading.Thread(target=s.httpd.serve_forever, args=(0.01,), daemon=True)
     thread.start()
     yield s
     s.httpd.shutdown()
@@ -138,13 +144,11 @@ def test_gives_up_after_the_last_attempt(server):
     assert slept == [1.0, 2.0]
 
 
-def test_network_errors_are_retried_then_reported():
-    with socket.socket() as s:  # a port nothing listens on
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
+def test_network_errors_are_retried_then_reported(server):
+    server.script = [(0, {}, b""), (0, {}, b"")]  # the server hangs up, twice
     slept: list[float] = []
-    with pytest.raises(FetchError, match="after 2 attempts: URLError"):
-        fetch(f"http://127.0.0.1:{port}/", attempts=2, timeout=5, sleep=slept.append)
+    with pytest.raises(FetchError, match="after 2 attempts: RemoteDisconnected"):
+        fetch(server.url, attempts=2, sleep=slept.append)
     assert slept == [1.0]
 
 
