@@ -1,0 +1,27 @@
+=== cold container 1: event {"days": 2}, 2026-11-20T19:03:43Z
+20 Nov 2026 19:03:40,685 [INFO] (rapid) Starting runtime without AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN , Expected?: false
+20 Nov 2026 19:03:41,071 [INFO] (rapid) INIT REPORT(durationMs: 385.591000)
+[INFO]	2026-11-20T19:03:41.162Z	e64f05b7-1eb5-44b2-af88-6bcdc6ae6346	wrote source=bmkg/ingest_date=2026-11-20/autogempa_20261120T190341Z.json (1 events, 551 bytes)
+[INFO]	2026-11-20T19:03:41.230Z	e64f05b7-1eb5-44b2-af88-6bcdc6ae6346	wrote source=bmkg/ingest_date=2026-11-20/gempaterkini_20261120T190341Z.json (15 events, 4178 bytes)
+[INFO]	2026-11-20T19:03:41.309Z	e64f05b7-1eb5-44b2-af88-6bcdc6ae6346	wrote source=bmkg/ingest_date=2026-11-20/gempadirasakan_20261120T190341Z.json (15 events, 4593 bytes)
+[INFO]	2026-11-20T19:03:42.217Z	e64f05b7-1eb5-44b2-af88-6bcdc6ae6346	wrote source=usgs/ingest_date=2026-11-20/20261118T190341Z_20261120T190341Z.json (3 events, 2529 bytes)
+REPORT RequestId: e64f05b7-1eb5-44b2-af88-6bcdc6ae6346	Init Duration: 0.02 ms	Duration: 1532.83 ms	Billed Duration: 1533 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+response: {"bronze": "/tmp/bronze", "ingested_at": "2026-11-20T19:03:41+00:00", "objects": [{"key": "source=bmkg/ingest_date=2026-11-20/autogempa_20261120T190341Z.json", "events": 1, "size": 551}, {"key": "source=bmkg/ingest_date=2026-11-20/gempaterkini_20261120T190341Z.json", "events": 15, "size": 4178}, {"key": "source=bmkg/ingest_date=2026-11-20/gempadirasakan_20261120T190341Z.json", "events": 
+=== cold container 2: event {"days": 2}, 2026-11-20T19:03:46Z
+20 Nov 2026 19:03:44,067 [INFO] (rapid) Starting runtime without AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN , Expected?: false
+20 Nov 2026 19:03:44,253 [INFO] (rapid) INIT REPORT(durationMs: 185.721000)
+[INFO]	2026-11-20T19:03:44.337Z	7e09a916-b933-40e2-ba8f-2ae34e78b0e5	wrote source=bmkg/ingest_date=2026-11-20/autogempa_20261120T190344Z.json (1 events, 551 bytes)
+[INFO]	2026-11-20T19:03:44.410Z	7e09a916-b933-40e2-ba8f-2ae34e78b0e5	wrote source=bmkg/ingest_date=2026-11-20/gempaterkini_20261120T190344Z.json (15 events, 4178 bytes)
+[INFO]	2026-11-20T19:03:44.478Z	7e09a916-b933-40e2-ba8f-2ae34e78b0e5	wrote source=bmkg/ingest_date=2026-11-20/gempadirasakan_20261120T190344Z.json (15 events, 4593 bytes)
+[INFO]	2026-11-20T19:03:45.170Z	7e09a916-b933-40e2-ba8f-2ae34e78b0e5	wrote source=usgs/ingest_date=2026-11-20/20261118T190344Z_20261120T190344Z.json (3 events, 2529 bytes)
+REPORT RequestId: 7e09a916-b933-40e2-ba8f-2ae34e78b0e5	Init Duration: 0.02 ms	Duration: 1103.88 ms	Billed Duration: 1104 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+response: {"bronze": "/tmp/bronze", "ingested_at": "2026-11-20T19:03:44+00:00", "objects": [{"key": "source=bmkg/ingest_date=2026-11-20/autogempa_20261120T190344Z.json", "events": 1, "size": 551}, {"key": "source=bmkg/ingest_date=2026-11-20/gempaterkini_20261120T190344Z.json", "events": 15, "size": 4178}, {"key": "source=bmkg/ingest_date=2026-11-20/gempadirasakan_20261120T190344Z.json", "events": 
+=== cold container 3: event {"days": 2}, 2026-11-20T19:03:49Z
+20 Nov 2026 19:03:47,030 [INFO] (rapid) Starting runtime without AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN , Expected?: false
+20 Nov 2026 19:03:47,230 [INFO] (rapid) INIT REPORT(durationMs: 200.880000)
+[INFO]	2026-11-20T19:03:47.319Z	f8d19301-0114-4b1d-b4f7-3605417b833b	wrote source=bmkg/ingest_date=2026-11-20/autogempa_20261120T190347Z.json (1 events, 551 bytes)
+[INFO]	2026-11-20T19:03:47.395Z	f8d19301-0114-4b1d-b4f7-3605417b833b	wrote source=bmkg/ingest_date=2026-11-20/gempaterkini_20261120T190347Z.json (15 events, 4178 bytes)
+[INFO]	2026-11-20T19:03:47.474Z	f8d19301-0114-4b1d-b4f7-3605417b833b	wrote source=bmkg/ingest_date=2026-11-20/gempadirasakan_20261120T190347Z.json (15 events, 4593 bytes)
+[INFO]	2026-11-20T19:03:48.354Z	f8d19301-0114-4b1d-b4f7-3605417b833b	wrote source=usgs/ingest_date=2026-11-20/20261118T190347Z_20261120T190347Z.json (3 events, 2529 bytes)
+REPORT RequestId: f8d19301-0114-4b1d-b4f7-3605417b833b	Init Duration: 0.02 ms	Duration: 1325.18 ms	Billed Duration: 1326 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+response: {"bronze": "/tmp/bronze", "ingested_at": "2026-11-20T19:03:47+00:00", "objects": [{"key": "source=bmkg/ingest_date=2026-11-20/autogempa_20261120T190347Z.json", "events": 1, "size": 551}, {"key": "source=bmkg/ingest_date=2026-11-20/gempaterkini_20261120T190347Z.json", "events": 15, "size": 4178}, {"key": "source=bmkg/ingest_date=2026-11-20/gempadirasakan_20261120T190347Z.json", "events": 

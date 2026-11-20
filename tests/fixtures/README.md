@@ -1,6 +1,6 @@
 # Recorded responses
 
-Real answers from the two sources, recorded on 2026-11-20 at 18:11 UTC with the
+Real answers from the two sources, recorded on 2026-11-20 at about 18:12 UTC with the
 package's own `fetch` and URL builder, and stored byte for byte. Tests replay
 them, so CI never touches the network.
 

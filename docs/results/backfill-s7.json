@@ -1,21 +1,22 @@
 {
-  "measured_at": "2026-11-20T18:23:06+00:00",
+  "measured_at": "2026-11-20T18:58:43+00:00",
   "quake_lake": "0.1.0",
   "machine": "Windows 11, Python 3.13.18",
   "bronze": "lake\\bronze",
   "since": "2015-01-01T00:00:00+00:00",
-  "until": "2026-11-20T18:23:06+00:00",
+  "until": "2026-11-20T18:58:43+00:00",
   "requests": 143,
-  "wall_seconds": 182.8,
+  "wall_seconds": 139.2,
   "request_seconds": {
-    "median": 1.287,
-    "p95": 1.499,
-    "max": 1.679
+    "median": 0.953,
+    "p95": 1.194,
+    "max": 1.361
   },
+  "storage_put_seconds_total": 0.085,
   "objects": 143,
-  "bytes": 18989680,
-  "events": 26762,
-  "unique_event_ids": 26762,
+  "bytes": 18990379,
+  "events": 26763,
+  "unique_event_ids": 26763,
   "ids_in_more_than_one_window": 0,
   "busiest_month": {
     "month": "202608",
@@ -27,7 +28,7 @@
     "max": 7.8,
     "missing": 1,
     "at_least": {
-      "4.0": 26669,
+      "4.0": 26670,
       "4.5": 11807,
       "5.0": 2725,
       "6.0": 204,
@@ -35,14 +36,14 @@
     }
   },
   "event_types": {
-    "earthquake": 26761,
+    "earthquake": 26762,
     "volcanic eruption": 1
   },
   "review_status": {
-    "reviewed": 26762
+    "reviewed": 26763
   },
   "magnitude_types": {
-    "mb": 25142,
+    "mb": 25143,
     "mww": 1572,
     "mwb": 23,
     "mwr": 13,
@@ -192,7 +193,7 @@
     "202607": 266,
     "202608": 606,
     "202609": 178,
-    "202610": 195,
+    "202610": 196,
     "202611": 61
   }
 }
