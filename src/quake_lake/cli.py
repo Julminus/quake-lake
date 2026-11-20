@@ -40,7 +40,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         storage = open_storage(args.bronze)
         steps = _steps(args, storage, now)
-    except ValueError as e:
+    except ERRORS as e:  # e.g. a bad URI, or boto3 finding no such AWS profile
         print(f"error: {e}", file=sys.stderr)
         return 1
 
@@ -74,6 +74,8 @@ def _steps(
     if args.since is None:
         windows = [(now - timedelta(days=args.days), now)]
     else:
+        if args.since >= now:
+            raise ValueError(f"--since ({args.since.isoformat()}) is in the future")
         # A window that ends in the future would be named as if it were complete.
         until = min(args.until or now, now)
         windows = month_windows(args.since, until)

@@ -92,6 +92,7 @@ def test_a_failure_part_way_reports_what_landed(net, tmp_path, capsys):
         ),
         (["usgs", "--bronze", "gs://bucket/x"], "unsupported storage URI"),
         (["usgs", "--bronze", ""], "empty storage URI"),
+        (["usgs", "--since", "2999-01-01"], "--since (2999-01-01T00:00:00+00:00) is in the future"),
     ],
 )
 def test_errors_exit_1_with_a_message(net, argv, message, capsys):
@@ -135,3 +136,11 @@ def test_timezone_in_since_is_converted_to_utc(net, tmp_path):
         == 0
     )
     assert LocalStorage(tmp_path).list()[0].endswith("/20180901T000000Z_20180902T000000Z.json")
+
+
+def test_a_storage_setup_error_is_a_message_not_a_traceback(net, monkeypatch, capsys):
+    monkeypatch.setenv("AWS_PROFILE", "no-such-profile")
+    assert main(["bmkg", "--bronze", "s3://lake/bronze"]) == 1
+    err = capsys.readouterr().err
+    assert err == "error: The config profile (no-such-profile) could not be found\n"
+    assert net.urls == []
