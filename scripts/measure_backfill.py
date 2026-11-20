@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from quake_lake import __version__
+from quake_lake.cli import _utc_time
 from quake_lake.ingest import ingest_usgs, month_windows
 from quake_lake.storage import Storage, open_storage
 
@@ -36,7 +37,7 @@ def main() -> None:
     if storage.list("source=usgs/"):
         raise SystemExit(f"{args.bronze} already holds USGS objects; use an empty root")
     now = datetime.now(UTC).replace(microsecond=0)
-    since = datetime.fromisoformat(args.since).replace(tzinfo=UTC)
+    since = _utc_time(args.since)  # the CLI's reading: no zone means UTC, an offset is honoured
     windows = month_windows(since, now)
 
     seconds: list[float] = []
