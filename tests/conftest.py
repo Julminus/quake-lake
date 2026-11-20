@@ -52,3 +52,24 @@ def net(monkeypatch) -> FakeNet:
     monkeypatch.setattr("quake_lake.fetch.urlopen", fake)
     monkeypatch.setattr("quake_lake.fetch.time.sleep", fake.slept.append)
     return fake
+
+
+@pytest.fixture(autouse=True)
+def _offline_aws(request, monkeypatch):
+    """Fake AWS settings, so making a boto3 client never looks for real credentials.
+
+    Without them boto3 asks the EC2 metadata endpoint, a network call. The MinIO
+    test brings its own settings from the environment.
+    """
+    if request.node.get_closest_marker("minio"):
+        return
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL_S3", raising=False)
+    for name, value in {
+        "AWS_ACCESS_KEY_ID": "testing",
+        "AWS_SECRET_ACCESS_KEY": "testing",
+        "AWS_DEFAULT_REGION": "us-east-1",
+        "AWS_EC2_METADATA_DISABLED": "true",
+    }.items():
+        monkeypatch.setenv(name, value)
