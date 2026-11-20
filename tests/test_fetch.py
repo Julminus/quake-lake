@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import socket
 import threading
 from collections.abc import Iterator
@@ -16,11 +17,13 @@ class Server:
     def __init__(self) -> None:
         self.script: list[tuple[int, dict[str, str], bytes]] = []
         self.user_agents: list[str | None] = []
+        self.accept_encodings: list[str | None] = []
         server = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
                 server.user_agents.append(self.headers.get("User-Agent"))
+                server.accept_encodings.append(self.headers.get("Accept-Encoding"))
                 status, headers, body = server.script.pop(0)
                 self.send_response(status)
                 for k, v in headers.items():
@@ -50,6 +53,41 @@ def test_returns_body_and_sends_user_agent(server):
     server.script = [(200, {}, b'{"ok": 1}')]
     assert fetch(server.url) == b'{"ok": 1}'
     assert server.user_agents == [USER_AGENT]
+
+
+def test_asks_for_gzip_and_returns_the_decoded_body(server):
+    body = b'{"type": "FeatureCollection", "features": []}' * 50
+    server.script = [(200, {"Content-Encoding": "gzip"}, gzip.compress(body))]
+    assert fetch(server.url) == body
+    assert server.accept_encodings == ["gzip"]
+
+
+def test_a_server_that_ignores_accept_encoding_still_works(server):
+    server.script = [(200, {}, b"plain")]
+    assert fetch(server.url) == b"plain"
+
+
+def test_a_gzip_error_body_is_decoded_into_the_message(server):
+    server.script = [
+        (400, {"Content-Encoding": "gzip"}, gzip.compress(b"Error 400: bad starttime"))
+    ]
+    with pytest.raises(FetchError, match=r"HTTP 400: Error 400: bad starttime$"):
+        fetch(server.url, sleep=lambda s: None)
+
+
+@pytest.mark.parametrize("bad", [b"not gzip at all", gzip.compress(b"x" * 1000)[:20]])
+def test_a_corrupt_or_cut_gzip_body_is_retried_then_reported(server, bad):
+    server.script = [(200, {"Content-Encoding": "gzip"}, bad)] * 2
+    slept: list[float] = []
+    with pytest.raises(FetchError, match="after 2 attempts"):
+        fetch(server.url, attempts=2, sleep=slept.append)
+    assert slept == [1.0]
+
+
+def test_a_corrupt_gzip_error_body_still_gives_the_status(server):
+    server.script = [(404, {"Content-Encoding": "gzip"}, b"garbage")]
+    with pytest.raises(FetchError, match=r"failed: HTTP 404$"):
+        fetch(server.url)
 
 
 def test_retries_5xx_with_backoff(server):

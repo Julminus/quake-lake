@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import io
+from email.message import Message
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.response import addinfourl
 
 import pytest
 
@@ -39,8 +41,8 @@ class FakeNet:
         if isinstance(answer, list):
             answer = answer.pop(0)
         if isinstance(answer, int):
-            raise HTTPError(url, answer, "error", {}, io.BytesIO(b"server says no"))  # type: ignore[arg-type]
-        return io.BytesIO(answer)
+            raise HTTPError(url, answer, "error", Message(), io.BytesIO(b"server says no"))
+        return addinfourl(io.BytesIO(answer), Message(), url, 200)
 
 
 @pytest.fixture
