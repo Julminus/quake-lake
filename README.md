@@ -51,8 +51,8 @@ number comes from, and how to re-run it, is in [`docs/results/`](docs/results/RE
   event it must refuse, which needs no network.
 - **MinIO:** with the image pulled, `docker compose up -d --wait minio` is healthy in 2.3 to
   2.4 s. The CLI's image is 233 MB.
-- **Tests:** 103 offline tests (recorded responses; one concurrency test runs on Linux only) at
-  100% branch coverage (CI fails below 90%), in 2.6 s. One more test does a storage round trip
+- **Tests:** 105 offline tests (recorded responses; one concurrency test runs on Linux only) at
+  100% branch coverage (CI fails below 90%), in 2.7 s. One more test does a storage round trip
   against a real MinIO; CI runs it too.
 
 ## How it works
@@ -130,10 +130,13 @@ test, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, then
 - **BMKG must be polled often, and first.** Its feeds only hold the latest events: `autogempa`
   just one, and in the recorded snapshot the 15 felt events span about 2.5 days and the 15
   M5.0+ events 22 days. Events that scroll off between polls are gone. So the handler polls
-  BMKG before USGS (a hung USGS can take 4 × 60 s timeouts plus back-off, 247 s, or 420 s if
-  it answers 503 with `Retry-After: 60` each time), isolates every feed, and takes `sources`
-  in the event: the plan is an hourly BMKG schedule next to a daily USGS one, with a Lambda
-  timeout above that worst case.
+  BMKG before USGS, isolates every feed, and takes `sources` in the event: the plan is an
+  hourly BMKG schedule next to a daily USGS one. A slow USGS can't be bounded by `fetch()`
+  alone: its 60 s timeout applies to each wait on the socket, not to the request, so a server
+  that answers slowly and then stalls can hold a run for many minutes (a stalled 503 with
+  `Retry-After: 60` on all four attempts: 4 × (60 + 60) s plus 3 × 60 s, 11 minutes), and
+  one that drips bytes has no limit. The Lambda timeout is the real cap, which is why
+  nothing perishable runs after USGS.
 - **Standard-library HTTP, boto3 as the only dependency.** The Lambda runtime already has boto3,
   so the deployment package is just `src/`. Retries cover network errors and HTTP 429, 500,
   502, 503 and 504, with exponential back-off (1, 2, 4 s), and honour a numeric `Retry-After`,
