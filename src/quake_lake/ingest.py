@@ -47,7 +47,7 @@ def month_windows(start: datetime, end: datetime) -> list[Window]:
     """Calendar-month windows from ``start`` to ``end`` (the first and last may be partial).
 
     USGS answers at most 20,000 events per query; the busiest month since 2015
-    in the Indonesia box has a few hundred, so one query per month is safe.
+    in the Indonesia box had 606 (August 2026), so one query per month is safe.
     """
     windows: list[Window] = []
     lo = start
