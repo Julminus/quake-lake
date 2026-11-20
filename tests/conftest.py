@@ -32,6 +32,7 @@ class FakeNet:
         }
         self.urls: list[str] = []
         self.user_agents: list[str | None] = []
+        self.slept: list[float] = []  # retry back-off, recorded instead of waited
 
     def __call__(self, request, timeout=None):
         url = request.full_url
@@ -49,4 +50,5 @@ class FakeNet:
 def net(monkeypatch) -> FakeNet:
     fake = FakeNet()
     monkeypatch.setattr("quake_lake.fetch.urlopen", fake)
+    monkeypatch.setattr("quake_lake.fetch.time.sleep", fake.slept.append)
     return fake

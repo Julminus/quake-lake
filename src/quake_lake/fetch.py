@@ -30,7 +30,7 @@ def fetch(
     *,
     attempts: int = 4,
     timeout: float = 60.0,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] | None = None,
 ) -> bytes:
     """Return the body of a successful response; retry network errors, 429 and 5xx."""
     attempt = 0
@@ -57,7 +57,7 @@ def fetch(
             delay = backoff
         if attempt >= attempts:
             raise FetchError(f"GET {url} failed after {attempt} attempts: {problem}")
-        sleep(min(delay, MAX_DELAY))
+        (sleep or time.sleep)(min(delay, MAX_DELAY))
 
 
 def _decoded(body: bytes, headers: Message) -> bytes:

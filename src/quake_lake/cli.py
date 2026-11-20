@@ -6,18 +6,28 @@ import argparse
 import os
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from functools import partial
 
 from botocore.exceptions import BotoCoreError, ClientError
 
 from quake_lake.fetch import FetchError
-from quake_lake.handler import DEFAULT_DAYS
-from quake_lake.ingest import BMKG_FEEDS, IngestError, ingest_bmkg, ingest_usgs, month_windows
-from quake_lake.storage import open_storage
+from quake_lake.handler import DEFAULT_DAYS, MAX_DAYS
+from quake_lake.ingest import (
+    BMKG_FEEDS,
+    IngestError,
+    Written,
+    ingest_bmkg,
+    ingest_usgs,
+    month_windows,
+)
+from quake_lake.storage import Storage, open_storage
 
 DEFAULT_BRONZE = "lake/bronze"
+
+
+ERRORS = (FetchError, IngestError, ValueError, OSError, BotoCoreError, ClientError)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -27,32 +37,51 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--until needs --since")
     now = datetime.now(UTC).replace(microsecond=0)
     started = time.perf_counter()
-    objects = events = size = 0
     try:
         storage = open_storage(args.bronze)
-        if args.command == "usgs":
-            if args.since is None:
-                windows = [(now - timedelta(days=args.days), now)]
-            else:
-                windows = month_windows(args.since, args.until or now)
-                if not windows:
-                    raise ValueError("--since must be before --until")
-            steps = [partial(ingest_usgs, storage, [w], now=now) for w in windows]
-        else:
-            steps = [partial(ingest_bmkg, storage, now=now, feeds=[f]) for f in BMKG_FEEDS]
-        # One request at a time, printed as it lands, so a failure part-way
-        # still shows what reached bronze.
-        for step in steps:
+        steps = _steps(args, storage, now)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+    objects = events = size = 0
+    failed = False
+    # One request at a time, printed as it lands, so a failure part-way still
+    # shows what reached bronze.
+    for step in steps:
+        try:
             for w in step():
                 print(f"{w.key}  {_count(w.events, 'event')}  {w.size:,} bytes", flush=True)
                 objects, events, size = objects + 1, events + w.events, size + w.size
-    except (FetchError, IngestError, ValueError, OSError, BotoCoreError, ClientError) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
+        except ERRORS as e:
+            print(f"error: {e}", file=sys.stderr, flush=True)
+            failed = True
+            # A backfill stops (re-running it is cheap); BMKG goes on to the next
+            # feed, because a feed that isn't snapshotted now may be gone later.
+            if args.command == "usgs":
+                break
     seconds = time.perf_counter() - started
     print(f"wrote {_count(objects, 'object')} to {storage.uri}: ", end="")
     print(f"{_count(events, 'event')}, {size:,} bytes in {seconds:.1f} s")
-    return 0
+    return 1 if failed else 0
+
+
+def _steps(
+    args: argparse.Namespace, storage: Storage, now: datetime
+) -> list[Callable[[], list[Written]]]:
+    if args.command == "bmkg":
+        return [partial(ingest_bmkg, storage, now=now, feeds=[f]) for f in BMKG_FEEDS]
+    if args.since is None:
+        windows = [(now - timedelta(days=args.days), now)]
+    else:
+        # A window that ends in the future would be named as if it were complete.
+        until = min(args.until or now, now)
+        windows = month_windows(args.since, until)
+        if not windows:
+            raise ValueError(
+                f"--since ({args.since.isoformat()}) must be before --until ({until.isoformat()})"
+            )
+    return [partial(ingest_usgs, storage, [w], now=now) for w in windows]
 
 
 def _count(n: int, noun: str) -> str:
@@ -89,8 +118,10 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _days(text: str) -> int:
-    if not text.isdigit() or int(text) < 1:
-        raise argparse.ArgumentTypeError(f"expected a whole number of days >= 1, got {text!r}")
+    if not text.isdigit() or not 1 <= int(text) <= MAX_DAYS:
+        raise argparse.ArgumentTypeError(
+            f"expected a whole number of days from 1 to {MAX_DAYS}, got {text!r}"
+        )
     return int(text)
 
 

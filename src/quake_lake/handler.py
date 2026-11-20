@@ -13,44 +13,58 @@ import os
 from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Any
 
-from quake_lake.ingest import Written, ingest_bmkg, ingest_usgs
+from quake_lake.ingest import BMKG_FEEDS, Written, ingest_bmkg, ingest_usgs
 from quake_lake.storage import open_storage
 
 DEFAULT_DAYS = 7
+MAX_DAYS = 36_500  # a century: anything longer is a typo, and a backfill is the CLI's job
+SOURCES = ("usgs", "bmkg")
 
 log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)  # Lambda's root logger is at WARNING; keep the per-object lines
 
 
 def lambda_handler(event: dict[str, Any] | None, context: object = None) -> dict[str, Any]:
     event = event or {}
     now = datetime.now(UTC).replace(microsecond=0)
     days = event.get("days", DEFAULT_DAYS)
-    if not isinstance(days, int) or isinstance(days, bool) or days < 1:
-        raise ValueError(f"'days' must be a whole number of days >= 1, got {days!r}")
+    if not isinstance(days, int) or isinstance(days, bool) or not 1 <= days <= MAX_DAYS:
+        raise ValueError(f"'days' must be a whole number from 1 to {MAX_DAYS}, got {days!r}")
+    sources = event.get("sources", list(SOURCES))
+    if (
+        not isinstance(sources, list)
+        or not sources
+        or any(s not in SOURCES for s in sources)
+        or len(set(sources)) < len(sources)
+    ):
+        raise ValueError(f"'sources' must list some of {list(SOURCES)} once each, got {sources!r}")
+
     storage = open_storage(os.environ["BRONZE_URI"])
-    jobs: dict[str, Callable[[], list[Written]]] = {
-        "usgs": lambda: ingest_usgs(storage, [(now - timedelta(days=days), now)], now=now),
-        "bmkg": lambda: ingest_bmkg(storage, now=now),
-    }
-    names = list(jobs)
-    sources = event.get("sources", names)
-    if not isinstance(sources, list) or not sources or any(s not in names for s in sources):
-        raise ValueError(f"'sources' must be a non-empty list from {names}, got {sources!r}")
+    # BMKG first and one feed at a time: its feeds only hold the latest events, so
+    # neither a broken feed nor a slow USGS may cost the others their snapshot.
+    # USGS can be fetched again at any time.
+    steps: list[tuple[str, Callable[[], list[Written]]]] = []
+    if "bmkg" in sources:
+        steps += [
+            (f"bmkg {f}", partial(ingest_bmkg, storage, now=now, feeds=[f])) for f in BMKG_FEEDS
+        ]
+    if "usgs" in sources:
+        window = (now - timedelta(days=days), now)
+        steps.append(("usgs", partial(ingest_usgs, storage, [window], now=now)))
 
     written: list[Written] = []
     errors: dict[str, str] = {}
-    for source in sources:
-        # One source failing must not cost the other its snapshot: BMKG's feeds
-        # move on, so a missed poll is data lost for good.
+    for name, step in steps:
         try:
-            written += jobs[source]()
+            for w in step():
+                log.info("wrote %s (%d events, %d bytes)", w.key, w.events, w.size)
+                written.append(w)
         except Exception as e:
-            log.exception("%s ingest failed", source)
-            errors[source] = f"{type(e).__name__}: {e}"
-    for w in written:
-        log.info("wrote %s (%d events, %d bytes)", w.key, w.events, w.size)
+            log.exception("%s failed", name)
+            errors[name] = f"{type(e).__name__}: {e}"
     if errors:
         # Raising marks the invocation failed, so Lambda's retry and alarms see it.
         raise RuntimeError(f"ingest failed for {', '.join(errors)}: {errors}")
