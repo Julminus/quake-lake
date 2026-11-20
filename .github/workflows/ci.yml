@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: ruff check
+        run: uv run ruff check .
+      - name: ruff format
+        run: uv run ruff format --check .
+      - name: mypy
+        run: uv run mypy
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked
+      - name: pytest (recorded fixtures, no network)
+        run: uv run pytest --cov --cov-report=term-missing
+      - name: CLI smoke test
+        run: uv run quake-lake --help
+
+  minio:
+    runs-on: ubuntu-latest
+    env:
+      QUAKE_LAKE_MINIO: "1"
+      AWS_ENDPOINT_URL_S3: http://127.0.0.1:9000
+      AWS_ACCESS_KEY_ID: quakelake
+      AWS_SECRET_ACCESS_KEY: quakelake-local
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: start MinIO and create the bucket (compose.yaml)
+        run: |
+          docker compose up -d --wait minio
+          docker compose run --rm createbucket
+      - name: storage against a real MinIO
+        run: uv run pytest -m minio -v
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: build the CLI image
+        run: docker build -t quake-lake:ci .
+      - name: run the CLI image
+        run: docker run --rm quake-lake:ci --help
+      - name: the handler runs in the AWS Lambda runtime with only the runtime's packages
+        run: |
+          # The source tree mounted at /var/task is what a zip deployment ships.
+          # A bad event needs no network: the runtime must load the handler and return its error.
+          docker run -d --rm --name lambda -p 9000:8080 -v "$PWD/src:/var/task:ro" \
+            -e BRONZE_URI=/tmp/bronze \
+            public.ecr.aws/lambda/python:3.12@sha256:f229f304f82f5016fe26e4714d05b6a8196e0c6c61b463112841a5e3c3647163 \
+            quake_lake.handler.lambda_handler
+          for i in $(seq 30); do
+            curl -s -d '{"sources": []}' http://127.0.0.1:9000/2015-03-31/functions/function/invocations > lambda.json && break
+            sleep 1
+          done
+          cat lambda.json
+          grep -q '"errorType": "ValueError"' lambda.json
+          grep -q "'sources' must be a non-empty list" lambda.json
+          docker stop lambda
