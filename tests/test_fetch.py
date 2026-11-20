@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gzip
 import threading
+import time
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -14,6 +15,7 @@ class Server:
     """A real local HTTP server that plays back a script of (status, headers, body).
 
     Status 0 hangs up without answering, which the client sees as a network error.
+    A header "X-Stall: <seconds>" keeps the connection open that long after the body.
     """
 
     def __init__(self) -> None:
@@ -37,6 +39,8 @@ class Server:
                     self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
+                self.wfile.flush()
+                time.sleep(float(headers.get("X-Stall", 0)))
 
             def log_message(self, *args: object) -> None:
                 pass
@@ -82,7 +86,23 @@ def test_a_gzip_error_body_is_decoded_into_the_message(server):
         fetch(server.url, sleep=lambda s: None)
 
 
-@pytest.mark.parametrize("bad", [b"not gzip at all", gzip.compress(b"x" * 1000)[:20]])
+def _corrupt_deflate() -> bytes:
+    body = bytearray(gzip.compress(b"x" * 1000))
+    body[10] ^= 0xFF  # the first byte after the gzip header: zlib.error, "invalid code lengths"
+    return bytes(body)
+
+
+# One body for each way gzip.decompress fails: OSError (BadGzipFile), EOFError, zlib.error.
+BAD_GZIP = [b"not gzip at all", gzip.compress(b"x" * 1000)[:20], _corrupt_deflate()]
+
+
+@pytest.mark.parametrize("encoding", ["GZIP", "x-gzip", " gzip "])
+def test_content_encoding_is_read_case_insensitively(server, encoding):
+    server.script = [(200, {"Content-Encoding": encoding}, gzip.compress(b"{}"))]
+    assert fetch(server.url) == b"{}"
+
+
+@pytest.mark.parametrize("bad", BAD_GZIP)
 def test_a_corrupt_or_cut_gzip_body_is_retried_then_reported(server, bad):
     server.script = [(200, {"Content-Encoding": "gzip"}, bad)] * 2
     slept: list[float] = []
@@ -91,18 +111,26 @@ def test_a_corrupt_or_cut_gzip_body_is_retried_then_reported(server, bad):
     assert slept == [1.0]
 
 
-def test_a_corrupt_gzip_error_body_still_gives_the_status(server):
-    server.script = [(404, {"Content-Encoding": "gzip"}, b"garbage")]
+@pytest.mark.parametrize("bad", BAD_GZIP)
+def test_a_corrupt_gzip_error_body_still_gives_the_status(server, bad):
+    server.script = [(404, {"Content-Encoding": "gzip"}, bad)]
     with pytest.raises(FetchError, match=r"failed: HTTP 404$"):
         fetch(server.url)
 
 
-def test_a_cut_error_body_is_retried_not_raised(server):
-    # 503 promising 100 bytes and sending 5: reading the reason fails part-way.
-    server.script = [(503, {"Content-Length": "100"}, b"short"), (200, {}, b"ok")]
+def test_a_stalled_error_body_is_retried_not_raised(server):
+    # A 503 promising 100 bytes, sending 5, then going quiet: reading its reason times out.
+    stall = {"Content-Length": "100", "X-Stall": "0.6"}
+    server.script = [(503, stall, b"short"), (200, {}, b"ok")]
     slept: list[float] = []
-    assert fetch(server.url, sleep=slept.append) == b"ok"
+    assert fetch(server.url, timeout=0.3, sleep=slept.append) == b"ok"
     assert slept == [1.0]
+
+
+def test_a_cut_error_body_still_gives_its_reason(server):
+    server.script = [(400, {"Content-Length": "2000"}, b"Error 400: bad starttime")]
+    with pytest.raises(FetchError, match=r"failed: HTTP 400: Error 400: bad starttime$"):
+        fetch(server.url)
 
 
 def test_retries_5xx_with_backoff(server):

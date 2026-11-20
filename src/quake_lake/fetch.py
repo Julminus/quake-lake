@@ -12,8 +12,8 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 USER_AGENT = "quake-lake/0.1 (+https://github.com/Julminus/quake-lake)"
-# USGS sends a month of GeoJSON about 7 times smaller gzipped (measured: 4.7 MB -> 0.7 MB
-# for the 12 months of 2018). urllib does not decode it by itself; _decoded() does.
+# USGS sends a month of GeoJSON about 7 times smaller gzipped (measured: 2018's 12 months
+# fetched 3 times, 4.7 MB plain vs 0.7 MB). urllib doesn't decode it itself; _decoded() does.
 HEADERS = {"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"}
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 MAX_DELAY = 60.0
@@ -42,8 +42,9 @@ def fetch(
                 return _decoded(r.read(), r.headers)
         except HTTPError as e:
             try:
-                text = _decoded(e.read(), e.headers)[:300]
-            # A cut, stalled or corrupt error body must not escape the retry: say what we can.
+                # A bounded read returns what arrived if the body is cut short; read() raises.
+                text = _decoded(e.read(65536), e.headers)[:300]
+            # A stalled or corrupt error body must not escape the retry: say what we can.
             except (OSError, HTTPException, EOFError, zlib.error):
                 text = b""
             detail = " ".join(text.decode("utf-8", "replace").split())  # one line
@@ -62,7 +63,8 @@ def fetch(
 
 def _decoded(body: bytes, headers: Message) -> bytes:
     """The body as the server meant it: gunzipped if it was sent gzip-encoded."""
-    return gzip.decompress(body) if headers.get("Content-Encoding") == "gzip" else body
+    encoding = (headers.get("Content-Encoding") or "").strip().lower()  # case-insensitive
+    return gzip.decompress(body) if encoding in ("gzip", "x-gzip") else body
 
 
 def _seconds(retry_after: str | None, default: float) -> float:
