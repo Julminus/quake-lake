@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# Recorded API responses: keep the bytes exactly as the source sent them.
+tests/fixtures/*.json -text

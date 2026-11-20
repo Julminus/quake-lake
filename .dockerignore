@@ -1,0 +1,17 @@
+.git
+.venv
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+.coverage.*
+htmlcov
+graphify-out
+lake
+.env
+dist
+build
+# local-only Claude Code files (see .git/info/exclude)
+.claude
+CLAUDE.md

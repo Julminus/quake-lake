@@ -1,0 +1,104 @@
+[project]
+name = "quake-lake"
+version = "0.1.0"
+description = "A medallion-architecture data lake for Indonesian earthquake data (USGS + BMKG), local-first with MinIO, deployable to AWS."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Ahmad Dzulfikar" }]
+requires-python = ">=3.11"
+keywords = ["data-engineering", "data-lake", "earthquake", "indonesia", "aws", "minio", "s3"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Typing :: Typed",
+]
+# boto3 is the only runtime dependency, and the AWS Lambda Python runtime already
+# ships it, so the Lambda bundle is just this package's source.
+dependencies = [
+    "boto3>=1.34",
+]
+
+[project.scripts]
+quake-lake = "quake_lake.cli:main"
+
+[project.urls]
+Repository = "https://github.com/Julminus/quake-lake"
+
+[dependency-groups]
+dev = [
+    "moto[s3]>=5.0",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quake_lake"]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # isort
+    "B",       # bugbear
+    "UP",      # pyupgrade
+    "SIM",     # simplify
+    "RUF",     # ruff-specific
+    "PT",      # pytest style
+    "C4",      # comprehensions
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501"]
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+strict = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+# boto3/botocore ship no type information; the S3 client is used through four calls.
+module = ["boto3.*", "botocore.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+xfail_strict = true
+markers = [
+    "minio: needs a running MinIO server (opt-in: QUAKE_LAKE_MINIO=1, see the README)",
+]
+
+[tool.coverage.run]
+source = ["quake_lake"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 90
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
