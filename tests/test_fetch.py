@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import random
 import threading
 import time
 from collections.abc import Iterator
@@ -35,7 +36,8 @@ class Server:
                 self.send_response(status)
                 for k, v in headers.items():
                     self.send_header(k, v)
-                if "Content-Length" not in headers:  # a script may lie about it
+                # A script may lie about the length, or send a chunked body itself.
+                if "Content-Length" not in headers and "Transfer-Encoding" not in headers:
                     self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -93,7 +95,12 @@ def _corrupt_deflate() -> bytes:
 
 
 # One body for each way gzip.decompress fails: OSError (BadGzipFile), EOFError, zlib.error.
-BAD_GZIP = [b"not gzip at all", gzip.compress(b"x" * 1000)[:20], _corrupt_deflate()]
+# Explicit ids: gzip stamps the time into its header, so the bytes change every second.
+BAD_GZIP = pytest.mark.parametrize(
+    "bad",
+    [b"not gzip at all", gzip.compress(b"x" * 1000)[:20], _corrupt_deflate()],
+    ids=["not-gzip", "cut", "corrupt-deflate"],
+)
 
 
 @pytest.mark.parametrize("encoding", ["GZIP", "x-gzip", " gzip "])
@@ -102,7 +109,7 @@ def test_content_encoding_is_read_case_insensitively(server, encoding):
     assert fetch(server.url) == b"{}"
 
 
-@pytest.mark.parametrize("bad", BAD_GZIP)
+@BAD_GZIP
 def test_a_corrupt_or_cut_gzip_body_is_retried_then_reported(server, bad):
     server.script = [(200, {"Content-Encoding": "gzip"}, bad)] * 2
     slept: list[float] = []
@@ -111,7 +118,9 @@ def test_a_corrupt_or_cut_gzip_body_is_retried_then_reported(server, bad):
     assert slept == [1.0]
 
 
-@pytest.mark.parametrize("bad", BAD_GZIP)
+@pytest.mark.parametrize(
+    "bad", [b"not gzip at all", _corrupt_deflate()], ids=["not-gzip", "corrupt"]
+)
 def test_a_corrupt_gzip_error_body_still_gives_the_status(server, bad):
     server.script = [(404, {"Content-Encoding": "gzip"}, bad)]
     with pytest.raises(FetchError, match=r"failed: HTTP 404$"):
@@ -125,6 +134,36 @@ def test_a_stalled_error_body_is_retried_not_raised(server):
     slept: list[float] = []
     assert fetch(server.url, timeout=0.3, sleep=slept.append) == b"ok"
     assert slept == [1.0]
+
+
+def test_a_chunked_error_body_cut_short_is_retried_not_raised(server):
+    # A chunk announced as 0x64 = 100 bytes, 5 sent, then the connection closes.
+    chunked = {"Transfer-Encoding": "chunked"}
+    server.script = [(503, chunked, b"64\r\nshort"), (200, {}, b"ok")]
+    slept: list[float] = []
+    assert fetch(server.url, sleep=slept.append) == b"ok"
+    assert slept == [1.0]
+
+
+# Over 64 KB gzipped: the noise (hex of random bytes) barely compresses.
+BIG_GZIP_ERROR = gzip.compress(
+    b"Error 400: bad starttime " + random.Random(0).randbytes(100_000).hex().encode(), mtime=0
+)
+
+
+@pytest.mark.parametrize(
+    ("length", "body"),
+    [
+        (len(BIG_GZIP_ERROR) + 1000, BIG_GZIP_ERROR[:5000]),  # the stream ends early
+        (len(BIG_GZIP_ERROR), BIG_GZIP_ERROR),  # whole, but longer than the 64 KB read
+    ],
+    ids=["cut-mid-stream", "longer-than-read"],
+)
+def test_a_gzip_error_body_cut_short_still_gives_its_reason(server, length, body):
+    assert len(BIG_GZIP_ERROR) > 65536
+    server.script = [(400, {"Content-Encoding": "gzip", "Content-Length": str(length)}, body)]
+    with pytest.raises(FetchError, match=r"failed: HTTP 400: Error 400: bad starttime [0-9a-f]+$"):
+        fetch(server.url)
 
 
 def test_a_cut_error_body_still_gives_its_reason(server):

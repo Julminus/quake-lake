@@ -42,11 +42,15 @@ def fetch(
                 return _decoded(r.read(), r.headers)
         except HTTPError as e:
             try:
-                # A bounded read returns what arrived if the body is cut short; read() raises.
-                text = _decoded(e.read(65536), e.headers)[:300]
+                # Only the start is needed, and it may be cut: a bounded read returns what
+                # arrived, and decompressobj, unlike gzip.decompress, what it could decode.
+                text = e.read(65536)
+                if _gzipped(e.headers):
+                    text = zlib.decompressobj(zlib.MAX_WBITS | 16).decompress(text, 300)
             # A stalled or corrupt error body must not escape the retry: say what we can.
-            except (OSError, HTTPException, EOFError, zlib.error):
+            except (OSError, HTTPException, zlib.error):
                 text = b""
+            text = text[:300]
             detail = " ".join(text.decode("utf-8", "replace").split())  # one line
             problem = f"HTTP {e.code}: {detail}" if detail else f"HTTP {e.code}"
             if e.code not in RETRY_STATUS:
@@ -63,8 +67,12 @@ def fetch(
 
 def _decoded(body: bytes, headers: Message) -> bytes:
     """The body as the server meant it: gunzipped if it was sent gzip-encoded."""
+    return gzip.decompress(body) if _gzipped(headers) else body
+
+
+def _gzipped(headers: Message) -> bool:
     encoding = (headers.get("Content-Encoding") or "").strip().lower()  # case-insensitive
-    return gzip.decompress(body) if encoding in ("gzip", "x-gzip") else body
+    return encoding in ("gzip", "x-gzip")
 
 
 def _seconds(retry_after: str | None, default: float) -> float:
