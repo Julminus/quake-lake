@@ -15,10 +15,11 @@ Indonesia, Docker 29.9.3. The README quotes these files.
 - **gzip, interleaved:** the 12 monthly windows of 2018, fetched 3 times in each mode,
   alternating plain and gzip so network drift hits both (36 requests each): median request
   1.027 s plain vs 0.602 s gzip, all 36 in 38.6 s vs 26.7 s, 4.7 MB vs 0.7 MB on the wire.
-  This is the fair comparison; the two full backfills above ran 76 minutes apart.
+  This is the fair comparison; the two full backfills above ran 36 minutes apart.
 - **MinIO start-up:** `docker compose up -d --wait minio` from a removed container (image
   already pulled, volume kept): 2.4, 2.4 and 2.3 s.
 - **Image size:** `quake-lake:dev` is 233,445,845 bytes (`docker image inspect`), mostly
   boto3 and botocore.
 - **Test suite:** `uv run pytest -q`, three runs: 12.11 to 12.20 s before commit `ef91452`,
-  2.14 to 2.15 s after.
+  2.14 to 2.15 s after. Round-2 fixes added 9 tests, one of which waits 0.6 s on a
+  stalled server: 2.58 to 2.65 s for the final 104.

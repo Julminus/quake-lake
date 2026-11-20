@@ -51,8 +51,8 @@ number comes from, and how to re-run it, is in [`docs/results/`](docs/results/RE
   event it must refuse, which needs no network.
 - **MinIO:** with the image pulled, `docker compose up -d --wait minio` is healthy in 2.3 to
   2.4 s. The CLI's image is 233 MB.
-- **Tests:** 94 offline tests (recorded responses; one concurrency test runs on Linux only) at
-  100% branch coverage (CI fails below 90%), in 2.1 s. One more test does a storage round trip
+- **Tests:** 103 offline tests (recorded responses; one concurrency test runs on Linux only) at
+  100% branch coverage (CI fails below 90%), in 2.6 s. One more test does a storage round trip
   against a real MinIO; CI runs it too.
 
 ## How it works
@@ -119,7 +119,7 @@ test, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, then
   error page or a JSON error never lands as data. Parsing and typing wait for silver, so when the
   silver logic changes, it can be re-run over bronze without fetching anything again.
 - **`ingest_date` is the UTC date.** A scheduled Lambda runs in UTC, and a run from a laptop in
-  Jakarta must land in the same partition: the measured backfill ran at 01:23 WIB on 21
+  Jakarta must land in the same partition: the measured backfill ran at 01:58 WIB on 21
   November, which is still the 20th in UTC, so its objects are under `ingest_date=2026-11-20`.
   The library refuses a naive (zone-less) time rather than read it as the machine's local
   time; the CLI reads a `--since` or `--until` without a zone as UTC.
@@ -130,9 +130,10 @@ test, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, then
 - **BMKG must be polled often, and first.** Its feeds only hold the latest events: `autogempa`
   just one, and in the recorded snapshot the 15 felt events span about 2.5 days and the 15
   M5.0+ events 22 days. Events that scroll off between polls are gone. So the handler polls
-  BMKG before USGS (a hung USGS can take 4 × 60 s timeouts plus back-off, 247 s), isolates
-  every feed, and takes `sources` in the event: the plan is an hourly BMKG schedule next to a
-  daily USGS one, with a Lambda timeout above that worst case.
+  BMKG before USGS (a hung USGS can take 4 × 60 s timeouts plus back-off, 247 s, or 420 s if
+  it answers 503 with `Retry-After: 60` each time), isolates every feed, and takes `sources`
+  in the event: the plan is an hourly BMKG schedule next to a daily USGS one, with a Lambda
+  timeout above that worst case.
 - **Standard-library HTTP, boto3 as the only dependency.** The Lambda runtime already has boto3,
   so the deployment package is just `src/`. Retries cover network errors and HTTP 429, 500,
   502, 503 and 504, with exponential back-off (1, 2, 4 s), and honour a numeric `Retry-After`,
