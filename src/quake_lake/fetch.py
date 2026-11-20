@@ -43,7 +43,8 @@ def fetch(
         except HTTPError as e:
             try:
                 text = _decoded(e.read(), e.headers)[:300]
-            except (OSError, EOFError, zlib.error):  # a broken error body: say what we can
+            # A cut, stalled or corrupt error body must not escape the retry: say what we can.
+            except (OSError, HTTPException, EOFError, zlib.error):
                 text = b""
             detail = " ".join(text.decode("utf-8", "replace").split())  # one line
             problem = f"HTTP {e.code}: {detail}" if detail else f"HTTP {e.code}"

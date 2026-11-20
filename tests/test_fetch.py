@@ -28,7 +28,8 @@ class Server:
                 self.send_response(status)
                 for k, v in headers.items():
                     self.send_header(k, v)
-                self.send_header("Content-Length", str(len(body)))
+                if "Content-Length" not in headers:  # a script may lie about it
+                    self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -88,6 +89,14 @@ def test_a_corrupt_gzip_error_body_still_gives_the_status(server):
     server.script = [(404, {"Content-Encoding": "gzip"}, b"garbage")]
     with pytest.raises(FetchError, match=r"failed: HTTP 404$"):
         fetch(server.url)
+
+
+def test_a_cut_error_body_is_retried_not_raised(server):
+    # 503 promising 100 bytes and sending 5: reading the reason fails part-way.
+    server.script = [(503, {"Content-Length": "100"}, b"short"), (200, {}, b"ok")]
+    slept: list[float] = []
+    assert fetch(server.url, sleep=slept.append) == b"ok"
+    assert slept == [1.0]
 
 
 def test_retries_5xx_with_backoff(server):
