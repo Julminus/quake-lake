@@ -1,0 +1,67 @@
+# Local stand-in for S3 (MinIO), and the ingest CLI as a one-off container.
+#
+#   docker compose up -d minio               S3 API on 127.0.0.1:9000, console on :9001
+#   docker compose run --rm ingest bmkg      snapshot BMKG into s3://lake/bronze
+#   docker compose run --rm ingest usgs --since 2015-01-01
+#
+# Ports bind to 127.0.0.1 only. The credentials are local-only defaults; set
+# MINIO_ROOT_USER / MINIO_ROOT_PASSWORD in a .env file to use your own.
+name: quake-lake
+
+x-minio-credentials:
+  user: &minio-user ${MINIO_ROOT_USER:-quakelake}
+  password: &minio-password ${MINIO_ROOT_PASSWORD:-quakelake-local}
+
+services:
+  minio:
+    # MinIO stopped publishing community images in 2025 (minio/minio is gone from
+    # Docker Hub); Chainguard builds it from source. Pinned by digest.
+    image: cgr.dev/chainguard/minio@sha256:e9cf6b99c226e9539ed0f14b6f00e37b07da153c7ba1f4f8709c807574b471ec
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: *minio-user
+      MINIO_ROOT_PASSWORD: *minio-password
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      # The image has bash but no curl: ask the liveness endpoint over /dev/tcp.
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /minio/health/live HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          read -r status <&3 && [[ $$status == *' 200 '* ]]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  createbucket:
+    image: cgr.dev/chainguard/minio-client@sha256:94433f625c8057d18c69675dbaa33da6e4864f084f9c44faf30d3eb8e3754e0b
+    command: ["mb", "--ignore-existing", "local/lake"]
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-quakelake}:${MINIO_ROOT_PASSWORD:-quakelake-local}@minio:9000
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  ingest:
+    build: .
+    image: quake-lake:dev
+    profiles: [tools]
+    environment:
+      BRONZE_URI: s3://lake/bronze
+      AWS_ENDPOINT_URL_S3: http://minio:9000
+      AWS_ACCESS_KEY_ID: *minio-user
+      AWS_SECRET_ACCESS_KEY: *minio-password
+      AWS_REGION: us-east-1
+    depends_on:
+      createbucket:
+        condition: service_completed_successfully
+
+volumes:
+  minio-data:
