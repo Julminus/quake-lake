@@ -10,7 +10,8 @@ COPY src ./src
 RUN uv sync --locked --no-dev --no-editable
 
 FROM python:3.12-slim
-RUN useradd --create-home --uid 1000 quake
+# /work is where the default bronze (lake/bronze) lands, so the user must own it.
+RUN useradd --create-home --uid 1000 quake && install -d -o quake -g quake /work
 COPY --from=build /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
 WORKDIR /work

@@ -73,7 +73,11 @@ jobs:
       - name: build the CLI image
         run: docker build -t quake-lake:ci .
       - name: run the CLI image
-        run: docker run --rm quake-lake:ci --help
+        run: |
+          docker run --rm quake-lake:ci --help
+          # As its non-root user, the image must be able to write the default bronze root.
+          docker run --rm --entrypoint python quake-lake:ci -c \
+            "from quake_lake.storage import open_storage as o; s = o('lake/bronze'); s.put('a.json', b'{}'); print(s.list())"
       - name: the handler runs in the AWS Lambda runtime with only the runtime's packages
         run: |
           # The source tree mounted at /var/task is what a zip deployment ships.
