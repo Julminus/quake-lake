@@ -74,7 +74,7 @@ def _steps(
     if args.since is None:
         windows = [(now - timedelta(days=args.days), now)]
     else:
-        if args.since >= now:
+        if args.since > now:
             raise ValueError(f"--since ({args.since.isoformat()}) is in the future")
         # A window that ends in the future would be named as if it were complete.
         until = min(args.until or now, now)
