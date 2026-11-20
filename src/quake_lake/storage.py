@@ -43,7 +43,9 @@ class LocalStorage:
         # writers. shortcut: on Windows, a second writer or an open reader of the
         # same key makes os.replace fail (it raises; nothing half-written lands);
         # bronze keys carry a timestamp, so this needs two runs in the same second.
-        tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        # 8 hex digits keep Windows paths short (no long-path support by default);
+        # two writers of one key colliding is a 1-in-4-billion chance.
+        tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}.tmp")
         try:
             tmp.write_bytes(data)
             os.replace(tmp, path)

@@ -56,10 +56,14 @@ def test_local_concurrent_writers_never_expose_half_an_object(tmp_path):
     s.put("k.json", bodies[0])
     stop = threading.Event()
     torn: list[bytes] = []
+    failed: list[Exception] = []  # an exception in a thread would otherwise only warn
 
     def write(body: bytes) -> None:
-        for _ in range(50):
-            s.put("k.json", body)
+        try:
+            for _ in range(50):
+                s.put("k.json", body)
+        except Exception as e:
+            failed.append(e)
 
     def read() -> None:
         while not stop.is_set():
@@ -76,6 +80,7 @@ def test_local_concurrent_writers_never_expose_half_an_object(tmp_path):
         t.join()
     stop.set()
     reader.join()
+    assert failed == []
     assert torn == []
     assert s.list() == ["k.json"]
 
