@@ -1,4 +1,4 @@
-"""quake-lake: fetch Indonesian earthquake data into the bronze layer."""
+"""quake-lake: fetch Indonesian earthquake data into bronze, and build silver from it."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from quake_lake.ingest import (
 from quake_lake.storage import Storage, open_storage
 
 DEFAULT_BRONZE = "lake/bronze"
+DEFAULT_SILVER = "lake/silver"
 
 
 ERRORS = (FetchError, IngestError, ValueError, OSError, BotoCoreError, ClientError)
@@ -37,6 +38,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--until needs --since")
     now = datetime.now(UTC).replace(microsecond=0)
     started = time.perf_counter()
+    if args.command == "silver":
+        return _silver(args, started)
     try:
         storage = open_storage(args.bronze)
         steps = _steps(args, storage, now)
@@ -86,6 +89,28 @@ def _steps(
     return [partial(ingest_usgs, storage, [w], now=now) for w in windows]
 
 
+def _silver(args: argparse.Namespace, started: float) -> int:
+    from quake_lake.silver import build_silver  # pandas and pyarrow: only this command needs them
+
+    try:
+        silver = open_storage(args.silver)
+        r = build_silver(open_storage(args.bronze), silver)
+    except ERRORS as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    seconds = time.perf_counter() - started
+    stale = f", deleted {_count(r.deleted, 'stale partition')}" if r.deleted else ""
+    print(f"read {_count(r.objects, 'bronze object')}, {_count(r.records, 'record')}")
+    print(f"quarantined {_count(r.quarantined, 'record')} (quarantine/events.jsonl)")
+    print(f"dropped {_count(r.repeats, 'repeat')} of an event id")
+    print(f"merged {_count(r.merged, 'BMKG event')} into the USGS event it matches")
+    print(
+        f"wrote {_count(r.events, 'event')} in {_count(r.partitions, 'monthly partition')} "
+        f"to {silver.uri}{stale} in {seconds:.1f} s"
+    )
+    return 0
+
+
 def _count(n: int, noun: str) -> str:
     return f"{n:,} {noun}" if n == 1 else f"{n:,} {noun}s"
 
@@ -116,6 +141,19 @@ def _parser() -> argparse.ArgumentParser:
     usgs.add_argument("--until", type=_utc_time, help="backfill end (default: now)")
 
     sub.add_parser("bmkg", parents=[bronze], help="snapshot BMKG's three latest-quake feeds")
+
+    silver = sub.add_parser(
+        "silver",
+        parents=[bronze],
+        help="rebuild the silver layer (typed Parquet) from all of bronze",
+        description="Reads every bronze object, validates and deduplicates the events, and "
+        "rewrites events/year=/month=/part-0.parquet and quarantine/events.jsonl.",
+    )
+    silver.add_argument(
+        "--silver",
+        default=os.environ.get("SILVER_URI", DEFAULT_SILVER),
+        help="silver root (default: $SILVER_URI, else %(default)s)",
+    )
     return parser
 
 
