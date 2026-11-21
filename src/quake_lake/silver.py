@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -69,7 +70,8 @@ RECORD = DataFrameSchema(
     {
         "event_id": Column(str, Check.str_length(min_value=1)),
         "source": Column(str, Check.isin(["usgs", "bmkg"])),
-        "time": Column("datetime64[ms, UTC]"),
+        # Instrumental catalogues start around 1900; earlier is a broken timestamp.
+        "time": Column("datetime64[ms, UTC]", Check.ge(pd.Timestamp("1900-01-01", tz="UTC"))),
         "latitude": Column(
             float, Check.in_range(INDONESIA_BBOX["minlatitude"], INDONESIA_BBOX["maxlatitude"])
         ),
@@ -174,7 +176,16 @@ def build_silver(bronze: Storage, silver: Storage) -> Result:
     )
 
 
-_UNREADABLE = (ValueError, TypeError, AttributeError, KeyError, IndexError)
+# Overflow: a time or number too large for a datetime or a float; recursion: deep nesting.
+_UNREADABLE = (
+    ValueError,
+    TypeError,
+    AttributeError,
+    KeyError,
+    IndexError,
+    OverflowError,
+    RecursionError,
+)
 
 
 def _open(key: str, body: bytes) -> tuple[datetime, Callable[[Any], dict[str, Any]], list[Any]]:
@@ -183,14 +194,17 @@ def _open(key: str, body: bytes) -> tuple[datetime, Callable[[Any], dict[str, An
     if stamp is None:
         raise ValueError("the key has no fetch time (…_YYYYMMDDTHHMMSSZ.json)")
     fetched = datetime.strptime(stamp.group(1), "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
-    doc = json.loads(body)
+    # NaN, Infinity and 1e400 stay text: a number field rejects them, and quarantine stays JSON.
+    doc = json.loads(body, parse_constant=str, parse_float=_float_or_text)
     if key.startswith("source=usgs/"):
         items = doc["features"]
         if not isinstance(items, list):
             raise TypeError("features is not a list")
         return fetched, _usgs, items
     gempa = doc["Infogempa"]["gempa"]
-    return fetched, _bmkg, [gempa] if isinstance(gempa, dict) else list(gempa)
+    if not isinstance(gempa, dict | list):
+        raise TypeError(f"Infogempa.gempa is not an object or a list: {gempa!r:.80}")
+    return fetched, _bmkg, [gempa] if isinstance(gempa, dict) else gempa
 
 
 def _usgs(f: dict[str, Any]) -> dict[str, Any]:
@@ -222,10 +236,10 @@ def _bmkg(r: dict[str, Any]) -> dict[str, Any]:
         "event_id": f"bmkg-{time:%Y%m%dT%H%M%SZ}",
         "source": "bmkg",
         "time": time,
-        "latitude": float(lat),
-        "longitude": float(lon),
-        "depth_km": float(r["Kedalaman"].lower().removesuffix("km")),
-        "magnitude": float(r["Magnitude"]),
+        "latitude": _finite(lat),
+        "longitude": _finite(lon),
+        "depth_km": _finite(r["Kedalaman"].lower().removesuffix("km")),
+        "magnitude": _finite(r["Magnitude"]),
         "mag_type": None,  # the feeds don't say which magnitude
         "place": _text(r.get("Wilayah")),
         "event_type": "earthquake",
@@ -237,8 +251,21 @@ def _number(x: Any) -> float | None:
     if x is None:
         return None
     if isinstance(x, bool) or not isinstance(x, int | float):
-        raise TypeError(f"expected a number, got {x!r}")
-    return float(x)
+        raise TypeError(f"expected a number, got {x!r:.80}")
+    return _finite(x)
+
+
+def _float_or_text(text: str) -> float | str:
+    f = float(text)
+    return f if math.isfinite(f) else text
+
+
+def _finite(x: str | float) -> float:
+    """``float(x)``, refusing NaN and infinity (``1e400`` in JSON, ``"nan"`` in BMKG's strings)."""
+    f = float(x)
+    if not math.isfinite(f):
+        raise ValueError(f"not a finite number: {x!r:.80}")
+    return f
 
 
 def _text(x: Any) -> str | None:

@@ -130,8 +130,14 @@ def test_recorded_feeds_become_typed_events(tmp_path):
 
 
 def test_a_rebuild_writes_the_same_bytes(tmp_path):
-    objects = {USGS_KEY: usgs(feature("us1"), feature("us2", t=T0 - timedelta(days=40)))}
-    _, out = build(tmp_path, objects)
+    objects = {
+        USGS_KEY: usgs(
+            feature("us1"), feature("us2", t=T0 - timedelta(days=40)), feature("x", lat=9.0)
+        ),
+        BMKG_KEY: bmkg(gempa(t=T0 + timedelta(seconds=3)), gempa(lat=-3.0), gempa(mag="abc")),
+    }
+    result, out = build(tmp_path, objects)
+    assert (result.merged, result.quarantined, result.events) == (1, 2, 3)
     first = files_of(out)
     build_silver(LocalStorage(tmp_path / "bronze"), out)
     assert files_of(out) == first
@@ -243,16 +249,36 @@ def test_merging_is_one_to_one_and_closest_in_time_first(tmp_path):
         ({BMKG_KEY: bmkg(gempa(mag="abc"))}, "unreadable record: ValueError"),
         ({BMKG_KEY: bmkg({**gempa(), "DateTime": "2026-11-10T00:00:00"})}, "has no time zone"),
         ({BMKG_KEY: bmkg({**gempa(), "Coordinates": "-7.0"})}, "unreadable record: ValueError"),
+        ({USGS_KEY: usgs(feature("bad", time=float("inf")))}, "expected a number, got 'Infinity'"),
+        ({USGS_KEY: usgs(feature("bad", mag=float("nan")))}, "expected a number, got 'NaN'"),
+        (
+            {USGS_KEY: usgs(feature("bad", lat=-7.123)).replace(b"-7.123", b"-1e400")},
+            "expected a number, got '-1e400'",
+        ),
+        ({USGS_KEY: usgs(feature("bad", time=10**20))}, "unreadable record: OverflowError"),
+        ({USGS_KEY: usgs(feature("bad", lon=10**400))}, "unreadable record: OverflowError"),
+        ({USGS_KEY: usgs(feature("bad", time=-(10**14)))}, "unreadable record: OverflowError"),
+        (
+            {USGS_KEY: usgs(feature("bad", t=datetime(1899, 12, 31, tzinfo=UTC)))},
+            "time: greater_than_or_equal_to(1900-01-01 00:00:00+00:00)",
+        ),
+        ({BMKG_KEY: bmkg(gempa(mag="nan"))}, "not a finite number: 'nan'"),
+        ({BMKG_KEY: bmkg(gempa(depth="inf km"))}, "not a finite number"),
+        (
+            {BMKG_KEY: bmkg({**gempa(), "DateTime": "0001-01-01T00:00:00+07:00"})},
+            "unreadable record: OverflowError",
+        ),
     ],
 )
 def test_bad_records_are_quarantined_and_the_rest_still_lands(tmp_path, objects, reason):
     ((key, body),) = objects.items()
-    doc = json.loads(body)
+    doc = json.loads(body, parse_constant=str, parse_float=silver._float_or_text)
     raw = doc["features"][0] if key == USGS_KEY else doc["Infogempa"]["gempa"][0]
     good = "source=usgs/ingest_date=2026-11-21/a_20261121T000000Z.json"
     result, out = build(tmp_path, {key: body, good: usgs(feature("good", lat=-3.0))})
 
-    (bad,) = quarantine(out)
+    (line,) = out.get("quarantine/events.jsonl").splitlines()
+    bad = json.loads(line, parse_constant=pytest.fail)  # strict JSON: no NaN or Infinity
     assert result.quarantined == 1
     assert any(reason in e for e in bad["errors"]), bad["errors"]
     assert (bad["bronze_key"], bad["record"]) == (key, raw)
@@ -279,6 +305,9 @@ def test_a_bad_revision_does_not_replace_the_good_version(tmp_path):
         (USGS_KEY, b'{"type": "FeatureCollection"}', "unreadable object: 'features'"),
         (USGS_KEY, b'{"features": {}}', "features is not a list"),
         (BMKG_KEY, b'{"Infogempa": "x"}', "unreadable object"),
+        (BMKG_KEY, b'{"Infogempa": {"gempa": "Service Unavailable"}}', "not an object or a list"),
+        (BMKG_KEY, b'{"Infogempa": {"gempa": 5}}', "not an object or a list"),
+        (USGS_KEY, b'{"features": ' + b"[" * 100_000, "unreadable object: maximum recursion"),
         ("source=usgs/ingest_date=2026-11-20/by-hand.json", usgs(feature()), "no fetch time"),
     ],
 )
