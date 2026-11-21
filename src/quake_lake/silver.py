@@ -86,6 +86,7 @@ RECORD = DataFrameSchema(
         "place": Column(str, nullable=True),
         "event_type": Column(str),
         "updated": Column("datetime64[ms, UTC]", nullable=True),
+        "ids": Column(str, nullable=True),  # USGS: every id the event has had, ",a,b,"
         "fetched": Column("datetime64[ms, UTC]"),
     },
     checks=Check(
@@ -150,6 +151,17 @@ def build_silver(bronze: Storage, silver: Storage) -> Result:
     # A sort on several columns is stable in pandas, so with all three equal the later row wins.
     df = df.sort_values(["updated", "fetched", "bronze_key"], na_position="first")
     df = df.drop_duplicates("event_id", keep="last")
+    # USGS sometimes gives an event a new preferred id; the newer row still lists the old
+    # one in `ids`. Rows are sorted oldest first, so a lower position is an older version.
+    position = {eid: n for n, eid in enumerate(df["event_id"])}
+    replaced = {
+        alias
+        for n, (eid, ids) in enumerate(zip(df["event_id"], df["ids"], strict=True))
+        if isinstance(ids, str)
+        for alias in ids.split(",")
+        if alias and alias != eid and position.get(alias, n) < n
+    }
+    df = df[~df["event_id"].isin(replaced)]
     repeats = before - len(df)
     df, merged = _merge_sources(df)
     df = df.sort_values(["time", "event_id"], ignore_index=True)
@@ -225,6 +237,7 @@ def _usgs(f: dict[str, Any]) -> dict[str, Any]:
         "place": _text(p.get("place")),
         "event_type": _text(p.get("type")),
         "updated": _epoch_ms(p.get("updated")),
+        "ids": _text(p.get("ids")),
     }
 
 
@@ -247,6 +260,7 @@ def _bmkg(r: dict[str, Any]) -> dict[str, Any]:
         "place": _text(r.get("Wilayah")),
         "event_type": "earthquake",
         "updated": None,
+        "ids": None,
     }
 
 
@@ -289,7 +303,7 @@ def _frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
         df[col] = pd.to_datetime(df[col], utc=True).astype("datetime64[ms, UTC]")
     for col in ("latitude", "longitude", "depth_km", "magnitude"):
         df[col] = df[col].astype("float64")
-    for col in ("event_id", "source", "mag_type", "place", "event_type", "bronze_key"):
+    for col in ("event_id", "source", "mag_type", "place", "event_type", "ids", "bronze_key"):
         df[col] = df[col].astype("str")
     return df
 

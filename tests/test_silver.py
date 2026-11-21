@@ -175,6 +175,30 @@ def test_with_the_same_updated_the_later_fetch_wins(tmp_path):
     assert events(out)["place"].tolist() == ["new"]
 
 
+def test_a_replaced_usgs_id_is_dropped_for_the_newer_one(tmp_path):
+    objects = {
+        USGS_KEY: usgs(feature("us7000aaaa", mag=5.0, ids=",us7000aaaa,")),
+        "source=usgs/ingest_date=2026-11-21/20261101T000000Z_20261121T000000Z.json": usgs(
+            feature("at00bbbb", mag=5.3, ids=",at00bbbb,us7000aaaa,", updated=T0 + timedelta(1))
+        ),
+    }
+    result, out = build(tmp_path, objects)
+    assert events(out)[["event_id", "magnitude"]].values.tolist() == [["at00bbbb", 5.3]]
+    assert result.repeats == 1
+
+
+def test_an_older_row_listing_a_newer_id_drops_nothing(tmp_path):
+    # The newer row no longer lists the old id: USGS split them, so both are events.
+    objects = {
+        USGS_KEY: usgs(feature("at00bbbb", ids=",at00bbbb,us7000aaaa,")),
+        "source=usgs/ingest_date=2026-11-21/20261101T000000Z_20261121T000000Z.json": usgs(
+            feature("us7000aaaa", ids=",us7000aaaa,", updated=T0 + timedelta(1))
+        ),
+    }
+    _, out = build(tmp_path, objects)
+    assert sorted(events(out)["event_id"]) == ["at00bbbb", "us7000aaaa"]
+
+
 def test_a_bmkg_event_listed_by_usgs_is_merged_into_the_usgs_row(tmp_path):
     objects = {
         USGS_KEY: usgs(feature("us1", mag=5.0)),
