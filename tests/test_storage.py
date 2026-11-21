@@ -117,6 +117,26 @@ def test_s3_put_get_list_under_prefix(s3):
     assert s.uri == "s3://lake/bronze/"
 
 
+def test_s3_parquet_is_not_labelled_json_and_delete_removes_one_key(s3):
+    s = S3Storage("lake", "silver/", s3)
+    s.put("events/year=2026/month=11/part-0.parquet", b"PAR1")
+    s.put("events/year=2026/month=10/part-0.parquet", b"PAR1")
+    head = s3.head_object(Bucket="lake", Key="silver/events/year=2026/month=11/part-0.parquet")
+    assert head["ContentType"] == "application/octet-stream"
+    s.delete("events/year=2026/month=11/part-0.parquet")
+    s.delete("events/year=2026/month=11/part-0.parquet")  # S3 deletes are idempotent too
+    assert s.list() == ["events/year=2026/month=10/part-0.parquet"]
+
+
+def test_local_delete_removes_the_key_and_ignores_a_missing_one(tmp_path):
+    s = LocalStorage(tmp_path)
+    s.put("events/a.parquet", b"1")
+    s.put("events/b.parquet", b"2")
+    s.delete("events/a.parquet")
+    s.delete("events/a.parquet")
+    assert s.list() == ["events/b.parquet"]
+
+
 def test_s3_list_reads_every_page(s3):
     # S3 answers at most 1,000 keys per request; an hourly BMKG poll passes that in two weeks.
     for i in range(1001):
@@ -179,3 +199,5 @@ def test_minio_round_trip():
     s.put("source=x/ingest_date=2026-11-20/a.json", b'{"ok": true}')
     assert s.get("source=x/ingest_date=2026-11-20/a.json") == b'{"ok": true}'
     assert s.list() == ["source=x/ingest_date=2026-11-20/a.json"]
+    s.delete("source=x/ingest_date=2026-11-20/a.json")
+    assert s.list() == []

@@ -25,6 +25,8 @@ class Storage(Protocol):
 
     def get(self, key: str) -> bytes: ...
 
+    def delete(self, key: str) -> None: ...
+
     def list(self, prefix: str = "") -> list[str]:
         """Every key under ``prefix``, sorted."""
         ...
@@ -55,6 +57,9 @@ class LocalStorage:
     def get(self, key: str) -> bytes:
         return (self.root / key).read_bytes()
 
+    def delete(self, key: str) -> None:
+        (self.root / key).unlink(missing_ok=True)
+
     def list(self, prefix: str = "") -> list[str]:
         if not self.root.is_dir():
             return []
@@ -74,8 +79,9 @@ class S3Storage:
         self.uri = f"s3://{bucket}/{prefix}"
 
     def put(self, key: str, data: bytes) -> None:
+        kind = "application/json" if key.endswith(".json") else "application/octet-stream"
         self.client.put_object(
-            Bucket=self.bucket, Key=self.prefix + key, Body=data, ContentType="application/json"
+            Bucket=self.bucket, Key=self.prefix + key, Body=data, ContentType=kind
         )
 
     def get(self, key: str) -> bytes:
@@ -83,6 +89,9 @@ class S3Storage:
             "Body"
         ].read()
         return body
+
+    def delete(self, key: str) -> None:
+        self.client.delete_object(Bucket=self.bucket, Key=self.prefix + key)
 
     def list(self, prefix: str = "") -> list[str]:
         pages = self.client.get_paginator("list_objects_v2").paginate(
