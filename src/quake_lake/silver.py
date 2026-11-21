@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import csv
 import io
+import itertools
 import json
 import math
 import re
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import cache
@@ -42,6 +44,8 @@ MATCH_KM = 100
 EARTH_KM = 6371.0088
 # The source's clock or ours may be a little off; a time zone slip (WIB read as UTC) is 7 h.
 CLOCK_SLACK = timedelta(hours=1)
+# Objects read and written at a time: on S3 each one is a request, and they wait on the network.
+IO_THREADS = 8
 
 _STAMP = re.compile(r"(\d{8}T\d{6}Z)\.json$")
 
@@ -123,9 +127,11 @@ def build_silver(bronze: Storage, silver: Storage) -> Result:
     raw: list[Any] = []
     bad: list[dict[str, Any]] = []
     records = 0
-    for key in keys:
+    with ThreadPoolExecutor(IO_THREADS) as pool:
+        bodies = list(pool.map(bronze.get, keys))
+    for key, body in zip(keys, bodies, strict=True):
         try:
-            fetched, parse, items = _open(key, bronze.get(key))
+            fetched, parse, items = _open(key, body)
         except _UNREADABLE as e:
             bad.append({"bronze_key": key, "errors": [f"unreadable object: {e}"], "record": None})
             continue
@@ -169,15 +175,17 @@ def build_silver(bronze: Storage, silver: Storage) -> Result:
         df["latitude"].to_numpy(), df["longitude"].to_numpy()
     )
 
-    written = set()
-    month = df["time"].dt.strftime("year=%Y/month=%m")
-    for part, group in df.groupby(month, sort=True):
-        key = f"events/{part}/part-0.parquet"
-        silver.put(key, _parquet(group))
-        written.add(key)
-    stale = [k for k in silver.list("events/") if k.endswith(".parquet") and k not in written]
-    for key in stale:
-        silver.delete(key)
+    # One conversion to Arrow; rows are sorted by time, so each month is one slice of it.
+    table = pa.Table.from_pandas(df[EVENTS.names], schema=EVENTS, preserve_index=False)
+    parts, start = {}, 0
+    for m, run in itertools.groupby(df["time"].dt.strftime("year=%Y/month=%m")):
+        n = sum(1 for _ in run)
+        parts[f"events/{m}/part-0.parquet"] = _parquet(table.slice(start, n))
+        start += n
+    with ThreadPoolExecutor(IO_THREADS) as pool:
+        list(pool.map(silver.put, parts, parts.values()))
+        stale = [k for k in silver.list("events/") if k.endswith(".parquet") and k not in parts]
+        list(pool.map(silver.delete, stale))
     silver.put("quarantine/events.jsonl", "".join(json.dumps(b) + "\n" for b in bad).encode())
     return Result(
         objects=len(keys),
@@ -186,7 +194,7 @@ def build_silver(bronze: Storage, silver: Storage) -> Result:
         repeats=repeats,
         merged=merged,
         events=len(df),
-        partitions=len(written),
+        partitions=len(parts),
         deleted=len(stale),
     )
 
@@ -405,8 +413,7 @@ def _unit(lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
     return np.column_stack([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)])
 
 
-def _parquet(df: pd.DataFrame) -> bytes:
-    table = pa.Table.from_pandas(df[EVENTS.names], schema=EVENTS, preserve_index=False)
+def _parquet(table: pa.Table) -> bytes:
     buf = io.BytesIO()
     pq.write_table(table, buf)
     return buf.getvalue()
