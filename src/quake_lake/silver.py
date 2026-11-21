@@ -105,7 +105,7 @@ class Result:
     objects: int
     records: int
     quarantined: int
-    repeats: int  # rows dropped because a newer row had the same event id
+    repeats: int  # rows dropped: a newer row had the same event id, or lists it in `ids`
     merged: int  # BMKG events merged into their USGS match
     events: int
     partitions: int
@@ -217,8 +217,9 @@ def _open(key: str, body: bytes) -> tuple[datetime, Callable[[Any], dict[str, An
     if stamp is None:
         raise ValueError("the key has no fetch time (…_YYYYMMDDTHHMMSSZ.json)")
     fetched = datetime.strptime(stamp.group(1), "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
-    # NaN, Infinity and 1e400 stay text: a number field rejects them, and quarantine stays JSON.
-    doc = json.loads(body, parse_constant=str, parse_float=_float_or_text)
+    # NaN, Infinity and 1e400 become _NotFinite: every field refuses them, and quarantine
+    # (which writes them back as strings) stays strict JSON.
+    doc = json.loads(body, parse_constant=_NotFinite, parse_float=_float_or_text)
     if key.startswith("source=usgs/"):
         items = doc["features"]
         if not isinstance(items, list):
@@ -280,9 +281,16 @@ def _number(x: Any) -> float | None:
     return _finite(x)
 
 
+class _NotFinite(str):
+    """NaN, Infinity or 1e400 as written in the JSON; neither a number nor a string here."""
+
+    def __repr__(self) -> str:
+        return str.__str__(self)
+
+
 def _float_or_text(text: str) -> float | str:
     f = float(text)
-    return f if math.isfinite(f) else text
+    return f if math.isfinite(f) else _NotFinite(text)
 
 
 def _finite(x: str | float) -> float:
@@ -294,7 +302,7 @@ def _finite(x: str | float) -> float:
 
 
 def _text(x: Any) -> str | None:
-    if x is None or isinstance(x, str):
+    if x is None or (isinstance(x, str) and not isinstance(x, _NotFinite)):
         return x
     raise TypeError(f"expected a string, got {x!r}")
 

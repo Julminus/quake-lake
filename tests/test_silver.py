@@ -273,11 +273,11 @@ def test_merging_is_one_to_one_and_closest_in_time_first(tmp_path):
         ({BMKG_KEY: bmkg(gempa(mag="abc"))}, "unreadable record: ValueError"),
         ({BMKG_KEY: bmkg({**gempa(), "DateTime": "2026-11-10T00:00:00"})}, "has no time zone"),
         ({BMKG_KEY: bmkg({**gempa(), "Coordinates": "-7.0"})}, "unreadable record: ValueError"),
-        ({USGS_KEY: usgs(feature("bad", time=float("inf")))}, "expected a number, got 'Infinity'"),
-        ({USGS_KEY: usgs(feature("bad", mag=float("nan")))}, "expected a number, got 'NaN'"),
+        ({USGS_KEY: usgs(feature("bad", time=float("inf")))}, "expected a number, got Infinity"),
+        ({USGS_KEY: usgs(feature("bad", mag=float("nan")))}, "expected a number, got NaN"),
         (
             {USGS_KEY: usgs(feature("bad", lat=-7.123)).replace(b"-7.123", b"-1e400")},
-            "expected a number, got '-1e400'",
+            "expected a number, got -1e400",
         ),
         ({USGS_KEY: usgs(feature("bad", time=10**20))}, "unreadable record: OverflowError"),
         ({USGS_KEY: usgs(feature("bad", lon=10**400))}, "unreadable record: OverflowError"),
@@ -287,6 +287,13 @@ def test_merging_is_one_to_one_and_closest_in_time_first(tmp_path):
             "time: greater_than_or_equal_to(1900-01-01 00:00:00+00:00)",
         ),
         ({BMKG_KEY: bmkg(gempa(mag="nan"))}, "not a finite number: 'nan'"),
+        ({USGS_KEY: usgs(feature("bad", place=float("nan")))}, "expected a string, got NaN"),
+        ({USGS_KEY: usgs(feature("bad", magType=float("inf")))}, "expected a string, got Infinity"),
+        (
+            {USGS_KEY: usgs(feature("x")).replace(b'"id": "x"', b'"id": NaN')},
+            "expected a string, got NaN",
+        ),
+        ({BMKG_KEY: bmkg({**gempa(), "Wilayah": float("nan")})}, "expected a string, got NaN"),
         ({BMKG_KEY: bmkg(gempa(depth="inf km"))}, "not a finite number"),
         (
             {BMKG_KEY: bmkg({**gempa(), "DateTime": "0001-01-01T00:00:00+07:00"})},
