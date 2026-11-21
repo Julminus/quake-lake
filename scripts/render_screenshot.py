@@ -1,10 +1,11 @@
 """Render docs/img/ingest.svg from a real run of the CLI (needs the network).
 
-Runs ``quake-lake usgs`` and ``quake-lake bmkg`` against the given bronze root
-and records exactly what they print. Rich is only needed here, so pull it in
+Runs ``quake-lake usgs`` and ``quake-lake bmkg`` against the given bronze root,
+then ``quake-lake silver`` into the given silver root, and records exactly what
+they print. Rich is only needed here, so pull it in
 for this one run:
 
-    uv run --with rich python scripts/render_screenshot.py s3://lake/bronze
+    uv run --with rich python scripts/render_screenshot.py s3://lake/bronze s3://lake/silver
 """
 
 from __future__ import annotations
@@ -19,9 +20,9 @@ from rich.console import Console
 OUT = Path(__file__).resolve().parents[1] / "docs" / "img" / "ingest.svg"
 
 
-def main(bronze: str) -> None:
+def main(bronze: str, silver: str) -> None:
     console = Console(record=True, width=104, force_terminal=True, file=io.StringIO())
-    for args in (["usgs", "--days", "7"], ["bmkg"]):
+    for args in (["usgs", "--days", "7"], ["bmkg"], ["silver", "--silver", silver]):
         cmd = ["quake-lake", *args, "--bronze", bronze]
         run = subprocess.run(cmd, capture_output=True, text=True, check=True)
         console.print(f"$ {' '.join(cmd)}", style="bold", markup=False, highlight=False)
@@ -34,4 +35,4 @@ def main(bronze: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "lake/bronze")
+    main(*(sys.argv[1:] or ["lake/bronze", "lake/silver"]))
