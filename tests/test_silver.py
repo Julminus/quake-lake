@@ -341,11 +341,13 @@ def test_a_partition_left_empty_is_deleted_and_nothing_else(tmp_path):
     ]
 
 
-def test_an_empty_bronze_gives_an_empty_silver(tmp_path):
-    result, out = build(tmp_path, {})
-    assert (result.objects, result.events, result.partitions) == (0, 0, 0)
-    assert out.list() == ["quarantine/events.jsonl"]
-    assert out.get("quarantine/events.jsonl") == b""
+def test_an_empty_bronze_is_refused_and_silver_is_left_alone(tmp_path):
+    _, out = build(tmp_path, {USGS_KEY: usgs(feature())})
+    before = files_of(out)
+    for empty in (LocalStorage(tmp_path / "typo"), LocalStorage(tmp_path / "silver")):
+        with pytest.raises(ValueError, match=r"no bronze objects under .*: nothing to build"):
+            build_silver(empty, out)
+    assert files_of(out) == before
 
 
 def test_other_event_types_are_kept_and_typed(tmp_path):
@@ -419,6 +421,11 @@ def test_cli_silver(tmp_path, capsys):
         "merged 1 BMKG event into the USGS event it matches",
     ]
     assert out[4].startswith(f"wrote 1 event in 1 monthly partition to {tmp_path / 'silver'} in ")
+
+
+def test_cli_silver_with_no_bronze_is_an_error(tmp_path, capsys):
+    assert main(["silver", "--bronze", str(tmp_path / "typo"), "--silver", str(tmp_path)]) == 1
+    assert "no bronze objects under" in capsys.readouterr().err
 
 
 def test_cli_silver_uses_the_environment_and_reports_errors(tmp_path, monkeypatch, capsys):

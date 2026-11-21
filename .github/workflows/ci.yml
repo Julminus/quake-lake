@@ -79,8 +79,9 @@ jobs:
           docker run --rm --entrypoint python quake-lake:ci -c \
             "from quake_lake.storage import open_storage as o; s = o('lake/bronze'); s.put('a.json', b'{}'); print(s.list())"
           # Silver's dependencies and the bundled province table ship in the image.
-          docker run --rm quake-lake:ci silver | tee silver.txt
-          grep -q "wrote 0 events in 0 monthly partitions to lake/silver" silver.txt
+          docker run --rm -v "$PWD/tests/fixtures/usgs-palu-2018-09-28.json:/bronze/source=usgs/ingest_date=2026-11-20/20180928T000000Z_20180929T000000Z.json:ro" \
+            quake-lake:ci silver --bronze /bronze --silver /tmp/silver | tee silver.txt
+          grep -q "wrote 81 events in 1 monthly partition to /tmp/silver" silver.txt
       - name: the handler runs in the AWS Lambda runtime with only the runtime's packages
         run: |
           # The source tree mounted at /var/task is what a zip deployment ships.

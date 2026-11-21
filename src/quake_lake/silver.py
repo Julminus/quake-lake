@@ -115,6 +115,9 @@ def build_silver(bronze: Storage, silver: Storage) -> Result:
         for k in bronze.list(f"source={source}/")
         if k.endswith(".json")
     ]
+    if not keys:
+        # A mistyped URI looks like an empty bronze, and the rebuild would delete all of silver.
+        raise ValueError(f"no bronze objects under {bronze.uri}: nothing to build silver from")
     rows: list[dict[str, Any]] = []
     raw: list[Any] = []
     bad: list[dict[str, Any]] = []
