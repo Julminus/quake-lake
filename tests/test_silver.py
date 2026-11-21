@@ -502,3 +502,34 @@ def test_minio_silver_round_trip():
 def test_an_id_twice_in_one_object_keeps_the_later_copy(tmp_path):
     _, out = build(tmp_path, {USGS_KEY: usgs(feature("us1", place="a"), feature("us1", place="b"))})
     assert events(out)["place"].tolist() == ["b"]
+
+
+def test_a_failed_write_deletes_no_stale_partition(tmp_path, monkeypatch):
+    _, out = build(tmp_path, {USGS_KEY: usgs(feature("us1", t=datetime(2026, 10, 31, tzinfo=UTC)))})
+    revised = usgs(feature("us1", t=datetime(2026, 11, 1, 1, tzinfo=UTC), updated=T0))
+    LocalStorage(tmp_path / "bronze").put(
+        "source=usgs/ingest_date=2026-11-21/20261101T000000Z_20261121T000000Z.json", revised
+    )
+    real = LocalStorage.put
+
+    def put(self, key, data):
+        if "month=11" in key:
+            raise OSError("disk full")
+        real(self, key, data)
+
+    monkeypatch.setattr(LocalStorage, "put", put)
+    with pytest.raises(OSError, match="disk full"):
+        build_silver(LocalStorage(tmp_path / "bronze"), out)
+    assert "events/year=2026/month=10/part-0.parquet" in out.list()
+
+
+def test_a_replaced_id_is_judged_by_updated_not_by_fetch_order(tmp_path):
+    objects = {
+        # Fetched first, but USGS revised it later: this is the newer version.
+        USGS_KEY: usgs(feature("at00bbbb", ids=",at00bbbb,us7000aaaa,", updated=T0 + timedelta(1))),
+        "source=usgs/ingest_date=2026-11-21/20261101T000000Z_20261121T000000Z.json": usgs(
+            feature("us7000aaaa", ids=",us7000aaaa,")
+        ),
+    }
+    _, out = build(tmp_path, objects)
+    assert events(out)["event_id"].tolist() == ["at00bbbb"]
