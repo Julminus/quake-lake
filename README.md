@@ -45,7 +45,7 @@ fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
   the two.
 - **The merge tolerance, 10 s and 100 km, rarely fits two distinct events:** in 12 years of
   USGS data, 6 pairs of different events were that close.
-- **0 of 26,913 real records failed validation.** The tests cover 25 kinds of bad record and
+- **0 of 26,913 real records failed validation.** The tests cover 29 kinds of bad record and
   8 kinds of unreadable object; each lands in `quarantine/events.jsonl` with its raw record.
 - **Provinces: the nearest-reference-point rule agrees with province polygons for 93.5% of
   events** (OCHA's 34-province boundaries, compared at that level): 98.1% of the 4,117 on
@@ -88,8 +88,8 @@ fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
   event it must refuse, which needs no network.
 - **MinIO:** with the image pulled, `docker compose up -d --wait minio` is healthy in 2.3 to
   2.4 s. The CLI's image is 688 MB since silver (233 MB before): pyarrow alone is 170 MB.
-- **Tests:** 172 offline tests (recorded responses and small built records; one concurrency
-  test runs on Linux only) at 100% branch coverage (CI fails below 90%), in 5 to 7 s (about 7.5 s through `make test`). Two
+- **Tests:** 181 offline tests (recorded responses and small built records; one concurrency
+  test runs on Linux only) at 100% branch coverage (CI fails below 90%), in 4.5 to 5 s (about 7 s through `make test`). Two
   more run against a real MinIO (a storage round trip and a silver rebuild); CI runs them too.
 
 ## How it works

@@ -33,8 +33,8 @@ Indonesia, Docker 29.9.3. The README quotes these files.
   0.78 s to 0.57 s, and MinIO (`s3://lake/measure-s7/bronze`, the 143-object backfill) 2.17 s
   to 1.03 s. Under a profiler before it, the MinIO build spent 1.3 s in puts and 0.5 s in
   gets of 2.9 s.
-- **Test suite, S8:** `uv run pytest -q`, three runs: 4.8 to 6.6 s for 172 offline tests
-  (174 with the two MinIO tests); `make test`, which adds coverage, 7.5 to 7.8 s.
+- **Test suite, S8:** `uv run pytest -q`, three runs: 4.5 to 4.9 s for 181 offline tests
+  (183 with the two MinIO tests); `make test`, which adds coverage, 7.1 s (two runs).
 - **Test suite, S7:** `uv run pytest -q`, three runs: 12.11 to 12.20 s before commit `ef91452`,
   2.14 to 2.15 s after. Review rounds 2 and 3 added 11 tests, one of which waits 0.3 s for a
   stalled server: 2.61 to 2.72 s for the final 106.
