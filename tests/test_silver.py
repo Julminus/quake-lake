@@ -372,12 +372,27 @@ def test_a_partition_left_empty_is_deleted_and_nothing_else(tmp_path):
     ]
 
 
-def test_an_empty_bronze_is_refused_and_silver_is_left_alone(tmp_path):
-    _, out = build(tmp_path, {USGS_KEY: usgs(feature())})
+@pytest.mark.parametrize(
+    ("objects", "message"),
+    [
+        ({}, "no valid records in 0 bronze objects under "),
+        (
+            {USGS_KEY: b"<html>503 Service Unavailable</html>"},
+            "no valid records in 1 bronze objects under .*; the first problem: unreadable object",
+        ),
+        ({USGS_KEY: usgs(feature(lat=9.0))}, "the first problem: latitude: in_range"),
+    ],
+)
+def test_a_bronze_with_no_valid_record_is_refused_and_silver_is_left_alone(
+    tmp_path, objects, message
+):
+    _, out = build(tmp_path / "before", {USGS_KEY: usgs(feature())})
     before = files_of(out)
-    for empty in (LocalStorage(tmp_path / "typo"), LocalStorage(tmp_path / "silver")):
-        with pytest.raises(ValueError, match=r"no bronze objects under .*: nothing to build"):
-            build_silver(empty, out)
+    bronze = LocalStorage(tmp_path / "bronze")
+    for key, body in objects.items():
+        bronze.put(key, body)
+    with pytest.raises(ValueError, match=message):
+        build_silver(bronze, out)
     assert files_of(out) == before
 
 
@@ -456,7 +471,7 @@ def test_cli_silver(tmp_path, capsys):
 
 def test_cli_silver_with_no_bronze_is_an_error(tmp_path, capsys):
     assert main(["silver", "--bronze", str(tmp_path / "typo"), "--silver", str(tmp_path)]) == 1
-    assert "no bronze objects under" in capsys.readouterr().err
+    assert "no valid records in 0 bronze objects under" in capsys.readouterr().err
 
 
 def test_cli_silver_uses_the_environment_and_reports_errors(tmp_path, monkeypatch, capsys):

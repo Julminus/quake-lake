@@ -120,9 +120,6 @@ def build_silver(bronze: Storage, silver: Storage) -> Result:
         for k in bronze.list(f"source={source}/")
         if k.endswith(".json")
     ]
-    if not keys:
-        # A mistyped URI looks like an empty bronze, and the rebuild would delete all of silver.
-        raise ValueError(f"no bronze objects under {bronze.uri}: nothing to build silver from")
     rows: list[dict[str, Any]] = []
     raw: list[Any] = []
     bad: list[dict[str, Any]] = []
@@ -151,6 +148,13 @@ def build_silver(bronze: Storage, silver: Storage) -> Result:
     for i in sorted(failed):
         bad.append({"bronze_key": df.at[i, "bronze_key"], "errors": failed[i], "record": raw[i]})
     df = df.drop(index=list(failed))
+    if df.empty:
+        # A mistyped URI, or a bronze of error pages, would otherwise delete all of silver.
+        why = f"; the first problem: {bad[0]['errors'][0]}" if bad else ""
+        raise ValueError(
+            f"no valid records in {len(keys):,} bronze objects under {bronze.uri}{why}; "
+            "silver is left as it was"
+        )
 
     before = len(df)
     # The newest version of each event wins: USGS's own `updated`, then the latest fetch.
