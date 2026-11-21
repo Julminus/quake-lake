@@ -29,29 +29,33 @@ connection in Indonesia). Where each number comes from, and how to re-run it, is
 Built from the local bronze: the full USGS backfill (143 objects), a 30-day USGS look-back
 fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
 
-- **26,782 events in 143 monthly Parquet files, 3.1 MB** (bronze's JSON is 19.0 MB), rebuilt
-  in 0.7 to 0.9 s (three runs; about 1 to 2 s from the CLI, with imports). Rebuilding over
-  the previous output gives **byte-identical files**.
-- **116 repeats of an event id dropped.** 113 USGS ids were in both the backfill and the
-  look-back, and USGS had revised 5 of them in between (the newer version is kept); 3 BMKG
-  events were in two of its feeds.
+- **26,782 events in 143 monthly Parquet files, 3.1 MB** (the 147 JSON objects are 19.1 MB),
+  rebuilt in 0.5 to 0.7 s (three runs; 1.0 to 1.2 s from the CLI, with imports). Rebuilding over the previous output gives **byte-identical files** (with
+  the same library versions: the Parquet files record pandas' and pyarrow's).
+- **116 repeats of an event dropped.** 113 USGS ids were in both the backfill and the
+  look-back, and USGS had revised 5 of them in between (the newer version is kept); none had
+  been renamed. BMKG's 31 records hold 28 events: the latest was in all three feeds, another
+  in two.
 - **15 BMKG events folded into the USGS event they match.** BMKG's 28 events split cleanly:
   the 15 matched (BMKG M5.1 to 7.2) were 0 to 5.0 s and 8 to 36 km from their USGS match
-  (median 17 km), each with only one USGS candidate within 300 s; the 13 unmatched are M2.0
-  to M4.6, smaller than USGS lists here. **BMKG's magnitude was the same or higher for all
-  15**, by up to 0.5 (median +0.3), so silver keeps USGS's values and links BMKG's id rather
-  than mixing the two.
+  (median 17 km), and each had only one USGS event within 300 s at any distance. The 13
+  unmatched (BMKG M2.0 to M4.6) have no USGS event within 413 s; they're below the size USGS
+  lists consistently here. **BMKG's magnitude was the same or higher for all 15**, by up to
+  0.5 (median +0.3), so silver keeps USGS's values and links BMKG's id rather than mixing
+  the two.
 - **The merge tolerance, 10 s and 100 km, rarely fits two distinct events:** in 12 years of
   USGS data, 6 pairs of different events were that close.
-- **0 of 26,913 real records failed validation.** The tests cover 18 kinds of bad record and
-  5 kinds of unreadable object; each lands in `quarantine/events.jsonl` with its raw record.
+- **0 of 26,913 real records failed validation.** The tests cover 25 kinds of bad record and
+  8 kinds of unreadable object; each lands in `quarantine/events.jsonl` with its raw record.
 - **Provinces: the nearest-reference-point rule agrees with province polygons for 93.5% of
   events** (OCHA's 34-province boundaries, compared at that level): 98.1% of the 4,117 on
-  land, 92.7% of the 22,665 at sea, 87.5% for those 100 to 200 km offshore.
-- **The USGS box is not Indonesia.** For 22.7% of the USGS events, USGS's nearest town is in
-  another country (3,712 in the Philippines, 2,160 in Timor-Leste, 180 in Papua New Guinea).
-  Silver still gives each its nearest Indonesian province, with `province_km`, so gold can
-  decide what counts: Sulawesi Utara's 5,734 events include Mindanao's.
+  land and 92.7% of the 22,665 at sea. It does worst at sea 100 to 200 km from the nearest
+  reference point (87.5%); beyond 200 km it agrees 96.6%.
+- **The USGS box is not Indonesia.** For 22.9% of the USGS events, USGS's nearest town is in
+  another country (3,712 in the Philippines, 2,160 in Timor-Leste, 180 in Papua New Guinea,
+  43 in Palau). Silver still gives each its nearest Indonesian province, with `province_km`,
+  so gold can decide what counts: 3,666 of Sulawesi Utara's 5,734 events have a USGS place
+  in the Philippines.
 
 ### Bronze
 
@@ -84,8 +88,8 @@ fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
   event it must refuse, which needs no network.
 - **MinIO:** with the image pulled, `docker compose up -d --wait minio` is healthy in 2.3 to
   2.4 s. The CLI's image is 688 MB since silver (233 MB before): pyarrow alone is 170 MB.
-- **Tests:** 156 offline tests (recorded responses and small built records; one concurrency
-  test runs on Linux only) at 100% branch coverage (CI fails below 90%), in about 5 s. Two
+- **Tests:** 172 offline tests (recorded responses and small built records; one concurrency
+  test runs on Linux only) at 100% branch coverage (CI fails below 90%), in 5 to 7 s (about 7.5 s through `make test`). Two
   more run against a real MinIO (a storage round trip and a silver rebuild); CI runs them too.
 
 ## How it works
@@ -218,7 +222,8 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
 - **Silver is rebuilt from all of bronze on every run.** That makes it idempotent by
   construction: the same bronze gives the same bytes, an event USGS revises replaces its older
   version, and a BMKG event that USGS only lists a day later is merged on the next run, with
-  no state to keep. A month a rebuild leaves empty is deleted, so an event whose origin time
+  no state to keep. An empty bronze is refused rather than rebuilt from: a mistyped URI looks
+  just like one, and would delete every partition. A month a rebuild leaves empty is deleted, so an event whose origin time
   moves across a month boundary isn't left in two files. The cost is reading every bronze
   object each time: 147 objects take under a second locally, but an hourly BMKG schedule adds
   about 26,000 small objects a year, which on S3 means as many GET requests per run. Reading
@@ -229,30 +234,37 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   stays in silver. Checks: coordinates inside the box USGS is queried with (BMKG covers a
   wider area; its events outside the box are quarantined, so both sources cover the same
   area), depth from -10 to 800 km, magnitude from -2 to 10 or missing, required fields
-  present, and an origin time no later than an hour after the fetch (the fetch time is in
+  present, numbers that are finite, and an origin time from 1900 to an hour after the fetch (the fetch time is in
   the bronze key, so the check gives the same answer on every rebuild; a WIB time read as
   UTC would be 7 hours late). Quarantine keeps the raw record, so a rule that was too strict
   can be fixed and the record recovered by the next rebuild, with nothing fetched again.
 - **USGS's row wins a cross-source match, and `bmkg_id` keeps the link.** USGS's events are
   reviewed and carry stable ids; BMKG's feeds have no ids and its magnitudes run higher on
   the same events (above). Merging is one to one and closest in time first, so in an
-  aftershock swarm two BMKG events can't both claim one USGS event. Time is the tolerance
-  that tells events apart: within 10 s, widening the distance from 50 to 150 km doesn't add
-  a single pair of distinct USGS events.
+  aftershock swarm two BMKG events can't both claim one USGS event (being greedy, it can
+  leave a pair unmerged that a global assignment would match, in a three-way near tie). Time
+  is the tolerance that tells events apart: within 10 s, distinct USGS events 50, 100 or
+  150 km apart number 6 pairs each, against 20 at any distance.
+- **USGS ids can change; BMKG's are made up.** USGS sometimes gives an event a new preferred
+  id and lists the old one in `ids`, so a row is dropped when a newer row lists its id. BMKG
+  has no ids, so silver names a BMKG event by its origin time: a revised time would make a
+  second event. That hasn't happened yet: the 25 events in both the recorded snapshot
+  (2026-11-20) and the next day's had the same times, places and magnitudes.
 - **Provinces from 522 reference points, not polygons.** The bundled table
   (`src/quake_lake/provinces.csv`, 25 KB) has one centre point per regency, city and large
   lake, with its province, from OCHA's Indonesia boundaries; `scripts/build_provinces.py`
   rebuilds it and applies the 2022 split of Papua into six provinces, which OCHA's 2020 data
   predates. Nearest point is a numpy dot product with no geometry dependency, and it agrees
-  with polygons for 93.5% of events. It is wrong mostly far offshore, where the nearest
-  province is arguable anyway; point-in-polygon with bundled, simplified boundaries is the
-  upgrade if a province leaderboard needs those few percent.
+  with polygons for 93.5% of events. It is wrong mostly at sea, 50 to 200 km from a
+  reference point, where the nearest province is arguable anyway; point-in-polygon with
+  bundled, simplified boundaries is the upgrade if a province leaderboard needs those few
+  percent.
 - **Every event type stays in silver.** USGS lists one volcanic eruption among the 26,769;
   silver keeps it as `event_type = volcanic eruption`, and gold decides what to count.
 - **pandas, pyarrow and pandera only where they're needed.** The CLI imports them only for
   `silver`, so the ingest commands start as fast as before, and the Lambda handler never
   imports them; its bundle is still just `src/` on the runtime's boto3. The Docker image
-  carries them all (688 MB), because S10's Airflow runs both steps from it.
+  carries them all (688 MB), because the Airflow step will run both from it.
 - **MinIO from Chainguard.** MinIO stopped publishing community images in 2025 (`minio/minio`
   is gone from Docker Hub), so `compose.yaml` uses Chainguard's build from source, pinned by
   digest. Its ports bind to 127.0.0.1 only.
@@ -264,8 +276,7 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   S3, Lambda with EventBridge schedules, Glue and Athena (plan only), then a **Streamlit**
   dashboard.
 - **Silver, later:** read only new bronze partitions once a full rebuild gets slow on S3;
-  group USGS rows that share an id in USGS's `ids` list (USGS sometimes changes an event's
-  preferred id; none had among the 113 events fetched twice); province polygons.
+  province polygons.
 
 ## Data and credits
 

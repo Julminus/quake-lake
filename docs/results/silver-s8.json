@@ -6,10 +6,17 @@
       "ingest_date=2026-11-20",
       "ingest_date=2026-11-21"
     ],
+    "bytes": 19084408,
     "records": 26913,
     "usgs_ids_fetched_twice": {
       "ids": 113,
-      "revised": 5
+      "revised": 5,
+      "ids_listed_by_another_event": 0
+    },
+    "bmkg_vs_recorded_fixtures": {
+      "shared": 25,
+      "changed": 0,
+      "missing_with_a_time_within_60_s": 0
     }
   },
   "silver": {
@@ -29,9 +36,9 @@
     }
   },
   "seconds_per_build": [
-    0.87,
-    0.68,
-    0.75
+    0.72,
+    0.53,
+    0.62
   ],
   "byte_identical_rebuilds": true,
   "matches": {
@@ -72,6 +79,24 @@
       4.3,
       4.6
     ],
+    "usgs_events_within_300_s_of_each_matched_bmkg": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "unmatched_seconds_to_nearest_usgs_min": 413.2,
     "pairs": [
       {
         "usgs": "us7000tu3u",
@@ -199,6 +224,12 @@
     "seconds": 10,
     "km": 100,
     "pairs": 6,
+    "pairs_by_km": {
+      "50": 6,
+      "100": 6,
+      "150": 6
+    },
+    "pairs_any_distance": 20,
     "events": 26769
   },
   "province": {
@@ -236,10 +267,12 @@
       "Philippine Islands region": 10,
       "Arafura Sea": 8
     },
-    "usgs_foreign_place_share": 0.227
+    "usgs_foreign_place_share": 0.229,
+    "sulawesi_utara_usgs_events": 5734,
+    "sulawesi_utara_usgs_place_in_philippines": 3666
   },
   "province_vs_polygons": {
-    "polygons": "idn-adm1.geojson",
+    "polygons": "geoBoundaries-IDN-ADM1_simplified.geojson",
     "events": 26782,
     "agree": 0.935,
     "on_land": {
@@ -250,19 +283,19 @@
       "events": 22665,
       "agree": 0.927
     },
-    "at_sea_0_50_km": {
+    "at_sea_0_50_km_from_a_reference_point": {
       "events": 2953,
       "agree": 0.992
     },
-    "at_sea_50_100_km": {
+    "at_sea_50_100_km_from_a_reference_point": {
       "events": 6422,
       "agree": 0.938
     },
-    "at_sea_100_200_km": {
+    "at_sea_100_200_km_from_a_reference_point": {
       "events": 8518,
       "agree": 0.875
     },
-    "at_sea_200_10000_km": {
+    "at_sea_200_10000_km_from_a_reference_point": {
       "events": 4772,
       "agree": 0.966
     },

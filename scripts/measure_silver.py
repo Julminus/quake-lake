@@ -60,8 +60,10 @@ def main() -> None:
             "objects": result.objects,
             "usgs_objects": len(usgs_keys),
             "ingest_dates": sorted({k.split("/")[1] for k in bronze.list() if "/" in k}),
+            "bytes": sum(len(bronze.get(k)) for k in bronze.list() if k.endswith(".json")),
             "records": result.records,
             "usgs_ids_fetched_twice": _usgs_repeats(bronze, usgs_keys),
+            "bmkg_vs_recorded_fixtures": _bmkg_revisions(bronze),
         },
         "silver": {
             "events": result.events,
@@ -86,13 +88,53 @@ def main() -> None:
 
 
 def _usgs_repeats(bronze: LocalStorage, keys: list[str]) -> dict[str, int]:
-    """USGS ids found in more than one object, and how many of those USGS had revised."""
+    """USGS ids found in more than one object, how many USGS had revised, and renames."""
     versions: dict[str, list[int]] = {}
+    aliases: dict[str, set[str]] = {}
     for key in keys:
         for f in json.loads(bronze.get(key))["features"]:
             versions.setdefault(f["id"], []).append(f["properties"]["updated"])
+            for alias in f["properties"]["ids"].split(","):
+                if alias:
+                    aliases.setdefault(alias, set()).add(f["id"])
     twice = [v for v in versions.values() if len(v) > 1]
-    return {"ids": len(twice), "revised": sum(len(set(v)) > 1 for v in twice)}
+    return {
+        "ids": len(twice),
+        "revised": sum(len(set(v)) > 1 for v in twice),
+        "ids_listed_by_another_event": sum(len(events) > 1 for events in aliases.values()),
+    }
+
+
+def _bmkg_revisions(bronze: LocalStorage) -> dict[str, int]:
+    """BMKG events in both the recorded fixtures (2026-11-20) and bronze: did any change?
+
+    BMKG has no ids, so silver names an event by its origin time; a revised time
+    would make it a second event.
+    """
+    fixtures = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
+    old, new = {}, {}
+    for target, keys in ((old, fixtures.glob("bmkg-*.json")), (new, bronze.list("source=bmkg/"))):
+        for k in keys:
+            body = k.read_bytes() if isinstance(k, Path) else bronze.get(k)
+            for item in silver._open(f"x_{Path(str(k)).name[:-5]}_20000101T000000Z.json", body)[2]:
+                target[item["DateTime"]] = (
+                    item["Coordinates"],
+                    item["Magnitude"],
+                    item["Kedalaman"],
+                )
+    shared = set(old) & set(new)
+    near = {
+        t
+        for t in set(old) - set(new)
+        for n in new
+        if abs(silver.datetime.fromisoformat(t) - silver.datetime.fromisoformat(n)).total_seconds()
+        < 60
+    }
+    return {
+        "shared": len(shared),
+        "changed": sum(old[t] != new[t] for t in shared),
+        "missing_with_a_time_within_60_s": len(near),
+    }
 
 
 def _digest(root: Path) -> str:
@@ -131,6 +173,12 @@ def _matches(bronze: LocalStorage, df) -> dict:
             }
         )
     unmatched = df[df["source"] == "bmkg"]
+    usgs_t = df.loc[df["source"] == "usgs", "time"].astype("int64").to_numpy() / 1000
+
+    def within(t: object, seconds: float) -> int:
+        return int((np.abs(usgs_t - t.timestamp()) <= seconds).sum())  # type: ignore[attr-defined]
+
+    gaps = [float(np.abs(usgs_t - t.timestamp()).min()) for t in unmatched["time"]]
     return {
         "bmkg_events": len(bmkg),
         "matched": len(pairs),
@@ -139,6 +187,11 @@ def _matches(bronze: LocalStorage, df) -> dict:
         "median_km": statistics.median(p["km"] for p in pairs) if pairs else None,
         "bmkg_minus_usgs_magnitude": sorted(round(p["bmkg_mag"] - p["usgs_mag"], 1) for p in pairs),
         "unmatched_bmkg_magnitudes": sorted(unmatched["magnitude"].tolist()),
+        # Any distance: how clear-cut each match is in time alone.
+        "usgs_events_within_300_s_of_each_matched_bmkg": sorted(
+            within(bmkg[p["bmkg"]]["time"], 300) for p in pairs
+        ),
+        "unmatched_seconds_to_nearest_usgs_min": round(min(gaps), 1) if gaps else None,
         "pairs": pairs,
     }
 
@@ -148,15 +201,20 @@ def _close_pairs(usgs) -> dict:
     u = usgs.sort_values("time")
     t = u["time"].astype("int64").to_numpy() / 1000
     lat, lon = u["latitude"].to_numpy(), u["longitude"].to_numpy()
-    n = 0
+    km = []  # distance of every pair within the time tolerance
     for i in range(len(t)):
         j = i + 1
         while j < len(t) and t[j] - t[i] <= silver.MATCH_SECONDS:
-            n += int(
-                silver._km(lat[i], lon[i], lat[j : j + 1], lon[j : j + 1])[0] <= silver.MATCH_KM
-            )
+            km.append(float(silver._km(lat[i], lon[i], lat[j : j + 1], lon[j : j + 1])[0]))
             j += 1
-    return {"seconds": silver.MATCH_SECONDS, "km": silver.MATCH_KM, "pairs": n, "events": len(t)}
+    return {
+        "seconds": silver.MATCH_SECONDS,
+        "km": silver.MATCH_KM,
+        "pairs": sum(d <= silver.MATCH_KM for d in km),
+        "pairs_by_km": {d: sum(x <= d for x in km) for d in (50, 100, 150)},
+        "pairs_any_distance": len(km),
+        "events": len(t),
+    }
 
 
 def _provinces(df) -> dict:
@@ -164,8 +222,17 @@ def _provinces(df) -> dict:
     # USGS names the nearest town; its country says how much of the box is not Indonesia.
     country = df.loc[df["source"] == "usgs", "place"].str.rsplit(", ", n=1).str[-1]
     foreign = country.isin(
-        ["Philippines", "Malaysia", "Timor Leste", "Papua New Guinea", "Australia", "Brunei"]
+        [
+            "Philippines",
+            "Malaysia",
+            "Timor Leste",
+            "Papua New Guinea",
+            "Palau",
+            "Australia",
+            "Brunei",
+        ]
     )
+    sulut = df[(df["province_code"] == "ID-SA") & (df["source"] == "usgs")]
     return {
         "provinces_used": int(df["province_code"].nunique()),
         "top": df["province"].value_counts().head(10).to_dict(),
@@ -173,6 +240,10 @@ def _provinces(df) -> dict:
         "km_max": float(km.max()),
         "usgs_place_country": country.value_counts().head(12).to_dict(),
         "usgs_foreign_place_share": round(float(foreign.mean()), 3),
+        "sulawesi_utara_usgs_events": len(sulut),
+        "sulawesi_utara_usgs_place_in_philippines": int(
+            sulut["place"].str.endswith("Philippines").sum()
+        ),
     }
 
 
@@ -200,7 +271,7 @@ def _against_polygons(df, path: Path) -> dict:
     bands = {}
     for lo, hi in ((0, 50), (50, 100), (100, 200), (200, 10_000)):
         m = ~on_land & (km >= lo) & (km < hi)
-        bands[f"at_sea_{lo}_{hi}_km"] = {
+        bands[f"at_sea_{lo}_{hi}_km_from_a_reference_point"] = {
             "events": int(m.sum()),
             "agree": round(float(ok[m].mean()), 3),
         }
