@@ -375,12 +375,19 @@ def test_a_partition_left_empty_is_deleted_and_nothing_else(tmp_path):
 @pytest.mark.parametrize(
     ("objects", "message"),
     [
-        ({}, "no valid records in 0 bronze objects under "),
+        ({}, r"no valid record under .* \(objects read: 0, records: 0\); silver is left as it was"),
         (
             {USGS_KEY: b"<html>503 Service Unavailable</html>"},
-            "no valid records in 1 bronze objects under .*; the first problem: unreadable object",
+            r"\(objects read: 1, records: 0; the first problem: unreadable object",
         ),
-        ({USGS_KEY: usgs(feature(lat=9.0))}, "the first problem: latitude: in_range"),
+        (
+            {USGS_KEY: usgs(feature(lat=9.0), feature(depth=None, place="x" * 10**6))},
+            r"\(objects read: 1, records: 2; the first problem: latitude: in_range\(-12, 7\) \(got 9.0\)\)",
+        ),
+        (
+            {USGS_KEY: usgs(feature(place=["x"] * 10**6))},
+            r"the first problem: unreadable record: TypeError: expected a string, got \['x', [^)]{0,80}\)",
+        ),
     ],
 )
 def test_a_bronze_with_no_valid_record_is_refused_and_silver_is_left_alone(
@@ -471,7 +478,7 @@ def test_cli_silver(tmp_path, capsys):
 
 def test_cli_silver_with_no_bronze_is_an_error(tmp_path, capsys):
     assert main(["silver", "--bronze", str(tmp_path / "typo"), "--silver", str(tmp_path)]) == 1
-    assert "no valid records in 0 bronze objects under" in capsys.readouterr().err
+    assert "no valid record under" in capsys.readouterr().err
 
 
 def test_cli_silver_uses_the_environment_and_reports_errors(tmp_path, monkeypatch, capsys):

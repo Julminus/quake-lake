@@ -150,10 +150,12 @@ def build_silver(bronze: Storage, silver: Storage) -> Result:
     df = df.drop(index=list(failed))
     if df.empty:
         # A mistyped URI, or a bronze of error pages, would otherwise delete all of silver.
-        why = f"; the first problem: {bad[0]['errors'][0]}" if bad else ""
+        # shortcut: only an all-invalid bronze is refused; one that lost most of its objects
+        # still rebuilds a smaller silver. A floor (say, last run's event count) if that bites.
+        why = f"; the first problem: {bad[0]['errors'][0]:.200}" if bad else ""
         raise ValueError(
-            f"no valid records in {len(keys):,} bronze objects under {bronze.uri}{why}; "
-            "silver is left as it was"
+            f"no valid record under {bronze.uri} (objects read: {len(keys):,}, records: {records:,}"
+            f"{why}); silver is left as it was"
         )
 
     before = len(df)
@@ -308,7 +310,7 @@ def _finite(x: str | float) -> float:
 def _text(x: Any) -> str | None:
     if x is None or (isinstance(x, str) and not isinstance(x, _NotFinite)):
         return x
-    raise TypeError(f"expected a string, got {x!r}")
+    raise TypeError(f"expected a string, got {x!r:.80}")
 
 
 def _epoch_ms(x: Any) -> datetime | None:

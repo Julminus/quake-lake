@@ -223,7 +223,9 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   construction: the same bronze gives the same bytes, an event USGS revises replaces its older
   version, and a BMKG event that USGS only lists a day later is merged on the next run, with
   no state to keep. A bronze without one valid record is refused rather than rebuilt from:
-  a mistyped URI, or a folder of error pages, would otherwise delete every partition. A month a rebuild leaves empty is deleted, so an event whose origin time
+  a mistyped URI, or a folder of error pages, would otherwise delete every partition. A
+  bronze that has lost most of its objects is not caught: silver mirrors whatever bronze
+  holds. A month a rebuild leaves empty is deleted, so an event whose origin time
   moves across a month boundary isn't left in two files. The cost is reading every bronze
   object each time: 147 objects take under a second locally, but an hourly BMKG schedule adds
   about 26,000 small objects a year, which on S3 means as many GET requests per run. Reading
