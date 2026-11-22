@@ -1,0 +1,159 @@
+{
+  "silver": {
+    "before_fetch": 26782,
+    "after_fetch": 26787
+  },
+  "dbt": {
+    "nodes": {
+      "seed": 2,
+      "test": 41,
+      "model (view)": 3,
+      "model (table)": 3,
+      "unit_test": 2,
+      "model (incremental)": 1
+    },
+    "statuses": {
+      "success": 9,
+      "pass": 43
+    },
+    "build_seconds": [
+      2.53,
+      0.95,
+      0.89
+    ],
+    "dbt_elapsed_seconds": [
+      0.93,
+      0.76,
+      0.78
+    ],
+    "slowest_nodes": {
+      "fct_earthquakes": 0.139,
+      "test_magnitude_and_depth_classes": 0.085,
+      "test_the_country_comes_from_usgs_place_only": 0.06,
+      "source_unique_silver_events_event_id": 0.059,
+      "source_not_null_silver_events_event_id": 0.051
+    }
+  },
+  "marts": {
+    "fct_earthquakes": {
+      "rows": 26781,
+      "in_indonesia": 20638,
+      "bmkg_only": 13,
+      "bmkg_listed": 28,
+      "by_place_country": {
+        "ID": 19432,
+        "PH": 3722,
+        "TL": 2167,
+        "(none)": 1206,
+        "PG": 180,
+        "PW": 48,
+        "MY": 23,
+        "IN": 2,
+        "AU": 1
+      },
+      "indonesian_by_magnitude_class": {
+        "light": 18381,
+        "moderate": 2020,
+        "strong": 134,
+        "minor": 85,
+        "major": 16,
+        "micro": 1,
+        "unknown": 1
+      },
+      "indonesian_by_depth_class": {
+        "shallow": 13934,
+        "intermediate": 5996,
+        "deep": 708
+      }
+    },
+    "agg_daily_activity": {
+      "rows": 4343,
+      "days_with_none": 87,
+      "first": "2015-01-01",
+      "last": "2026-11-21",
+      "median_per_day": 4.0,
+      "busiest_day": {
+        "activity_date": "2026-04-02",
+        "earthquakes": 135,
+        "max_magnitude": 6.3
+      }
+    },
+    "agg_province_magnitude": {
+      "rows": 124,
+      "provinces": 36,
+      "by_province": {
+        "Maluku": 3943,
+        "Maluku Utara": 3616,
+        "Sulawesi Utara": 2056,
+        "Nusa Tenggara Timur": 1596,
+        "Papua": 1100,
+        "Aceh": 811,
+        "Sumatera Utara": 759,
+        "Nusa Tenggara Barat": 752,
+        "Bengkulu": 718,
+        "Sulawesi Tengah": 695,
+        "Jawa Timur": 586,
+        "Gorontalo": 576,
+        "Jawa Barat": 544,
+        "Sumatera Barat": 438,
+        "Lampung": 358,
+        "Papua Barat": 317,
+        "Banten": 281,
+        "Sulawesi Selatan": 262,
+        "Papua Pegunungan": 205,
+        "Papua Tengah": 174,
+        "Bali": 164,
+        "Papua Barat Daya": 134,
+        "Sulawesi Tenggara": 113,
+        "DI Yogyakarta": 113,
+        "Jawa Tengah": 85,
+        "Sulawesi Barat": 79,
+        "Jambi": 57,
+        "Sumatera Selatan": 42,
+        "Kalimantan Timur": 17,
+        "Kalimantan Utara": 15,
+        "DKI Jakarta": 14,
+        "Riau": 7,
+        "Kalimantan Selatan": 4,
+        "Kalimantan Barat": 4,
+        "Kalimantan Tengah": 2,
+        "Papua Selatan": 1
+      },
+      "by_region": {
+        "Maluku": 7559,
+        "Sulawesi": 3781,
+        "Sumatera": 3190,
+        "Nusa Tenggara": 2512,
+        "Papua": 1931,
+        "Jawa": 1623,
+        "Kalimantan": 42
+      }
+    },
+    "dim_province": {
+      "rows": 38
+    },
+    "sulawesi_utara": {
+      "all": 5734,
+      "in_indonesia": 2056
+    }
+  },
+  "freshness": {
+    "status": "pass",
+    "max_loaded_at": "2026-11-21 09:42:09.120000+00:00",
+    "age_hours": 32.6
+  },
+  "incremental": {
+    "fetched_at": "2026-11-22T18:16:12+00:00",
+    "rows_before": 26781,
+    "rows_after": 26786,
+    "rows_written": 6,
+    "new_events": 5,
+    "changed_events": 1,
+    "deleted_events": 0,
+    "fct_seconds_incremental": 0.091,
+    "fct_seconds_full_refresh": 0.093,
+    "run_seconds_incremental": 0.22,
+    "run_seconds_full_refresh": 0.21,
+    "identical_to_full_refresh": true
+  }
+}
