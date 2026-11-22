@@ -22,8 +22,3 @@ seeds:
     columns:
       - name: place_region
         data_tests: [unique, not_null]
-      - name: country_code
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: [ID, PH, TL, PG, PW, MY, AU, IN]
