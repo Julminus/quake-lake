@@ -110,6 +110,7 @@ def test_gold_builds_from_the_recorded_feeds(lake):
     assert {(p, c): (n, mx, first, last) for p, c, n, mx, first, last, _ in rows} == expected
     for p, c, *_, depth in rows:  # SQL rounds half away from zero, Python to even
         assert depth == pytest.approx(depths[p, c], abs=0.051)
+        assert depth == round(depth, 1)
     assert max(len(v) for v in groups.values()) > 1
     # Every day from 2018-09-28 to the last BMKG event, quiet ones as 0.
     days = (datetime(2026, 11, 20) - datetime(2018, 9, 28)).days + 1
