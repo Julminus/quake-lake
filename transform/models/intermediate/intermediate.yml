@@ -1,0 +1,67 @@
+models:
+  - name: int_earthquakes
+    description: Silver's earthquakes (other event types dropped), classified by magnitude and depth, with the country of USGS's place.
+    columns:
+      - name: place_region
+        description: The part of USGS's place after the last comma, or the whole place when it has none (a region such as "Banda Sea"). Empty for BMKG-only events.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('usgs_place_regions')
+                field: place_region
+              config:
+                # A region not in the seed counts as Indonesian until it is added.
+                severity: warn
+
+unit_tests:
+  - name: test_the_country_comes_from_usgs_place_only
+    model: int_earthquakes
+    given:
+      - input: ref('stg_silver__events')
+        rows:
+          - {event_id: ph, row_source: usgs, event_type: earthquake, place: "120 km SSE of Sarangani, Philippines"}
+          - {event_id: id, row_source: usgs, event_type: earthquake, place: "45 km NE of Palu, Indonesia "}
+          - {event_id: sea, row_source: usgs, event_type: earthquake, place: "Banda Sea"}
+          - {event_id: new, row_source: usgs, event_type: earthquake, place: "60 km W of Gizo, Solomon Islands"}
+          - {event_id: none, row_source: usgs, event_type: earthquake, place: null}
+          - {event_id: bmkg, row_source: bmkg, event_type: earthquake, place: "Pusat gempa berada di laut 57 km utara Ruteng, Manggarai"}
+          - {event_id: volcano, row_source: usgs, event_type: volcanic eruption, place: "Banda Sea"}
+      - input: ref('usgs_place_regions')
+        rows:
+          - {place_region: Indonesia, country_code: ID}
+          - {place_region: Philippines, country_code: PH}
+          - {place_region: Banda Sea, country_code: null}
+    expect:
+      rows:
+        - {event_id: ph, place_region: Philippines, place_country_code: PH, in_indonesia: false}
+        - {event_id: id, place_region: Indonesia, place_country_code: ID, in_indonesia: true}
+        - {event_id: sea, place_region: Banda Sea, place_country_code: null, in_indonesia: true}
+        - {event_id: new, place_region: Solomon Islands, place_country_code: null, in_indonesia: true}
+        - {event_id: none, place_region: null, place_country_code: null, in_indonesia: true}
+        - {event_id: bmkg, place_region: null, place_country_code: null, in_indonesia: true}
+
+  - name: test_magnitude_and_depth_classes
+    model: int_earthquakes
+    given:
+      - input: ref('stg_silver__events')
+        rows:
+          - {event_id: a, row_source: usgs, event_type: earthquake, magnitude: 2.9, depth_km: -1.5}
+          - {event_id: b, row_source: usgs, event_type: earthquake, magnitude: 3.0, depth_km: 69.9}
+          - {event_id: c, row_source: usgs, event_type: earthquake, magnitude: 4.99, depth_km: 70}
+          - {event_id: d, row_source: usgs, event_type: earthquake, magnitude: 5.0, depth_km: 299.9}
+          - {event_id: e, row_source: usgs, event_type: earthquake, magnitude: 6.0, depth_km: 300}
+          - {event_id: f, row_source: usgs, event_type: earthquake, magnitude: 7.5, depth_km: 650}
+          - {event_id: g, row_source: usgs, event_type: earthquake, magnitude: 8.0, depth_km: 10}
+          - {event_id: h, row_source: bmkg, event_type: earthquake, magnitude: null, depth_km: 10}
+      - input: ref('usgs_place_regions')
+        rows: []
+    expect:
+      rows:
+        - {event_id: a, magnitude_class: micro, depth_class: shallow}
+        - {event_id: b, magnitude_class: minor, depth_class: shallow}
+        - {event_id: c, magnitude_class: light, depth_class: intermediate}
+        - {event_id: d, magnitude_class: moderate, depth_class: intermediate}
+        - {event_id: e, magnitude_class: strong, depth_class: deep}
+        - {event_id: f, magnitude_class: major, depth_class: deep}
+        - {event_id: g, magnitude_class: great, depth_class: shallow}
+        - {event_id: h, magnitude_class: unknown, depth_class: shallow}

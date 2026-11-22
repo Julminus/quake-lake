@@ -21,6 +21,10 @@ htmlcov/
 # The local lake (bronze/silver/gold written by the pipeline)
 lake/
 
+# dbt's build output and logs
+transform/target/
+transform/logs/
+
 # graphify knowledge graph (local only)
 graphify-out/
 

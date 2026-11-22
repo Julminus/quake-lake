@@ -1,0 +1,26 @@
+# Gold: dbt models over the silver Parquet, built into a DuckDB file.
+# Run from the repository root (make gold), so the relative default paths in
+# profiles.yml and models/sources.yml resolve: lake/silver in, lake/gold.duckdb out.
+name: quake_lake
+version: "0.1.0"
+config-version: 2
+profile: quake_lake
+
+flags:
+  send_anonymous_usage_stats: false
+
+models:
+  quake_lake:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
+
+seeds:
+  quake_lake:
+    usgs_place_regions:
+      # Text, whatever the codes look like (agate would read a code such as NO as a boolean).
+      +column_types:
+        country_code: varchar

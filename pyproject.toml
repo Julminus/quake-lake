@@ -19,10 +19,12 @@ classifiers = [
     "Typing :: Typed",
 ]
 # Ingestion (the Lambda handler) needs only boto3, which the AWS Lambda Python runtime
-# already ships, so the Lambda bundle is just this package's source. Silver needs the
-# rest; the lower bounds are the versions it was tested with.
+# already ships, so the Lambda bundle is just this package's source. Silver needs
+# pandas, pyarrow and pandera, gold (transform/) dbt-duckdb; the lower bounds are the
+# versions they were tested with.
 dependencies = [
     "boto3>=1.34",
+    "dbt-duckdb>=1.11",
     "pandas>=3.0",
     "pandera>=0.36",
     "pyarrow>=26",

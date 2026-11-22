@@ -1,0 +1,29 @@
+seeds:
+  - name: province_regions
+    description: >
+      The geographical unit of each province, as ISO 3166-2:ID groups them (Bali is in
+      Nusa Tenggara).
+    columns:
+      - name: province_code
+        data_tests: [unique, not_null]
+      - name: region
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [Sumatera, Jawa, Kalimantan, Sulawesi, Nusa Tenggara, Maluku, Papua]
+
+  - name: usgs_place_regions
+    description: >
+      The country of each region USGS names in `place`: the part after the last comma
+      ("... of Sarangani, Philippines"), or the whole place when it is a region name
+      ("Banda Sea"). An empty country_code is a sea or a region no one country owns; those
+      events count as Indonesian. Edit this file to change what counts.
+    columns:
+      - name: place_region
+        data_tests: [unique, not_null]
+      - name: country_code
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [ID, PH, TL, PG, PW, MY, AU, IN]

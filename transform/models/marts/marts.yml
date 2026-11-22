@@ -1,0 +1,102 @@
+models:
+  - name: fct_earthquakes
+    description: >
+      One row per earthquake in the USGS box (lat -12 to 7, lon 94 to 142), including the
+      ones USGS places in another country; `in_indonesia` says which count as Indonesian.
+      Incremental: only new or changed rows are rewritten.
+    columns:
+      - name: event_id
+        description: USGS's id, or `bmkg-<UTC origin time>` for an event only BMKG lists.
+        data_tests: [unique, not_null]
+      - name: row_source
+        description: Where the row's values come from, `usgs` or `bmkg`.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [usgs, bmkg]
+      - name: origin_time_utc
+        data_tests: [not_null]
+      - name: latitude
+        data_tests:
+          - accepted_range:
+              arguments: {min_value: -12, max_value: 7}
+      - name: longitude
+        data_tests:
+          - accepted_range:
+              arguments: {min_value: 94, max_value: 142}
+      - name: depth_km
+        data_tests:
+          - not_null
+          - accepted_range:
+              arguments: {min_value: -10, max_value: 800}
+      - name: depth_class
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [shallow, intermediate, deep]
+      - name: magnitude
+        data_tests:
+          - accepted_range:
+              arguments: {min_value: -2, max_value: 10}
+      - name: magnitude_class
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [unknown, micro, minor, light, moderate, strong, major, great]
+      - name: in_indonesia
+        description: False when USGS's place is in another country (seeds/usgs_place_regions.csv).
+        data_tests: [not_null]
+      - name: province_code
+        description: The province of the nearest regency reference point (silver's province step).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_province')
+                field: province_code
+      - name: province_km
+        description: Distance to that reference point.
+      - name: row_hash
+        description: md5 of the row's other columns; the incremental run rewrites a row when it changes.
+        data_tests: [unique, not_null]
+
+  - name: dim_province
+    description: The 38 provinces (ISO 3166-2:ID), with their region and reference points.
+    columns:
+      - name: province_code
+        data_tests: [unique, not_null]
+      - name: province
+        data_tests: [unique, not_null]
+      - name: region
+        description: Empty if the province is missing from seeds/province_regions.csv.
+        data_tests: [not_null]
+
+  - name: agg_daily_activity
+    description: Indonesian earthquakes per UTC day, every day from the first to the last.
+    columns:
+      - name: activity_date
+        data_tests: [unique, not_null]
+      - name: earthquakes
+        data_tests:
+          - not_null
+          - accepted_range:
+              arguments: {min_value: 0}
+
+  - name: agg_province_magnitude
+    description: Indonesian earthquakes per province and magnitude class.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "province_code || '/' || magnitude_class"
+    columns:
+      - name: province_code
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_province')
+                field: province_code
+      - name: earthquakes
+        data_tests:
+          - accepted_range:
+              arguments: {min_value: 1}

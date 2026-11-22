@@ -2,10 +2,13 @@
 # and cmd.exe (GNU make on Windows without Git Bash on PATH).
 
 # The CLI writes to $BRONZE_URI when it is set, else to lake/bronze; silver to
-# $SILVER_URI, else lake/silver.
+# $SILVER_URI, else lake/silver. dbt reads silver from there and builds gold into
+# $GOLD_DB, else lake/gold.duckdb.
 SINCE ?= 2015-01-01
+export DBT_PROJECT_DIR := transform
+export DBT_PROFILES_DIR := transform
 
-.PHONY: help setup lint format typecheck test run backfill silver minio minio-run docker clean
+.PHONY: help setup lint format typecheck test run backfill silver gold freshness docs minio minio-run docker clean
 
 help:
 	@echo "setup      install deps (+ pre-commit hooks once .pre-commit-config.yaml exists)"
@@ -13,9 +16,12 @@ help:
 	@echo "format     apply ruff fixes and formatting"
 	@echo "typecheck  mypy (strict) on src/"
 	@echo "test       pytest with coverage (offline: recorded fixtures)"
-	@echo "run        a BMKG snapshot + the last 7 days of USGS into BRONZE_URI, then silver"
+	@echo "run        a BMKG snapshot + the last 7 days of USGS into BRONZE_URI, then silver and gold"
 	@echo "backfill   fetch USGS month by month from SINCE=2015-01-01 into BRONZE_URI"
 	@echo "silver     rebuild silver (SILVER_URI, default lake/silver) from all of bronze"
+	@echo "gold       dbt build: seeds, models and tests into GOLD_DB (default lake/gold.duckdb)"
+	@echo "freshness  dbt source freshness: is the newest event in silver recent?"
+	@echo "docs       dbt docs generate, then open transform/target/static_index.html"
 	@echo "minio      start MinIO (127.0.0.1:9000) and create the 'lake' bucket"
 	@echo "minio-run  the same as run, inside a container, into s3://lake/ on MinIO"
 	@echo "docker     build the CLI image"
@@ -42,12 +48,22 @@ run:
 	uv run quake-lake bmkg
 	uv run quake-lake usgs
 	uv run quake-lake silver
+	uv run dbt build
 
 backfill:
 	uv run quake-lake usgs --since $(SINCE)
 
 silver:
 	uv run quake-lake silver
+
+gold:
+	uv run dbt build
+
+freshness:
+	uv run dbt source freshness
+
+docs:
+	uv run dbt docs generate --static
 
 minio:
 	docker compose up -d --wait minio
