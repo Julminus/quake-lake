@@ -1,4 +1,4 @@
-# Measured results (S7 2026-11-20, S8 2026-11-21)
+# Measured results (S7 2026-11-20, S8 2026-11-21, S9 2026-11-22)
 
 Everything was measured on one PC: Windows 11, Ryzen 7 9800X3D, a home connection in
 Indonesia, Docker 29.9.3. The README quotes these files.
@@ -9,6 +9,7 @@ Indonesia, Docker 29.9.3. The README quotes these files.
 | `backfill-s7-minio.json` | The same backfill into MinIO (`compose.yaml`), two minutes later | the same script with `--bronze s3://lake/measure-s7/bronze` and the MinIO variables from `.env.example` |
 | `backfill-s7-before-gzip.json` | The first backfill, before `fetch()` asked for gzip | the script as of commit `1a8613f`, which did not yet time storage writes (no `storage_put_seconds_total`) |
 | `silver-s8.json` | Silver built from the local bronze: the S7 backfill plus a 30-day USGS look-back and one BMKG snapshot, both fetched at 18:05 UTC on 2026-11-21 (147 objects). Counts, three timed builds and whether they were byte-identical, every BMKG-USGS match with its time and distance, pairs of distinct USGS events within the match tolerance, provinces, and the province step scored against polygons | `uv run quake-lake bmkg` and `uv run quake-lake usgs --days 30` on top of the S7 backfill, then `uv run --with shapely python scripts/measure_silver.py --polygons geoBoundaries-IDN-ADM1_simplified.geojson` (the polygons: geoBoundaries' gbHumanitarian IDN ADM1, simplified, commit `9469f09`, 6.6 MB, not in the repo; https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbHumanitarian/IDN/ADM1/geoBoundaries-IDN-ADM1_simplified.geojson). It also compares the BMKG events in bronze with the recorded fixtures in `tests/fixtures/` |
+| `gold-s9.json` | Gold built with dbt from a silver of the same 147 bronze objects as `silver-s8.json`: the dbt nodes and their results, three timed full builds, the mart counts, source freshness, and an incremental run of `fct_earthquakes` after a real fetch (a BMKG snapshot and the 7-day USGS look-back at 18:16 UTC on 2026-11-22), compared with a full refresh | `uv run python scripts/measure_gold.py --bronze lake/bronze` (silver and gold go to a temporary folder; only the fetch writes to the bronze) |
 | `lambda-s7.log` | Three cold starts of the handler in `public.ecr.aws/lambda/python:3.12` under its local emulator, one live invocation each (`{"days": 2}`: three BMKG feeds and two days of USGS), with the emulator's raw `INIT REPORT` / `REPORT` lines and the handler's log | `docker run` with `src/` mounted at `/var/task`, then a `curl` to the invocation URL, as in the CI `docker` job |
 
 ## Measured by hand (no file)
@@ -20,9 +21,17 @@ Indonesia, Docker 29.9.3. The README quotes these files.
 - **MinIO start-up:** `docker compose up -d --wait minio` from a removed container (image
   already pulled, volume kept): 2.4, 2.4 and 2.3 s.
 - **Image size:** `quake-lake:dev` was 233,445,845 bytes (`docker image inspect`) in S7,
-  mostly boto3 and botocore, and is 688,359,893 bytes with silver's dependencies (S8).
-  `du -sm` of its site-packages: pyarrow 170 MB, pandas 81, numpy 43 plus 23 of bundled
-  libraries, botocore 31, pandera 7.
+  mostly boto3 and botocore, 688,359,893 bytes with silver's dependencies (S8), and is
+  1,182,854,459 bytes with dbt-duckdb (S9). `du -sm` of its site-packages: pyarrow 170 MB,
+  pandas 81, DuckDB 66, numpy 43 plus 23 of bundled libraries, Babel 33 (from dbt's agate),
+  botocore 31, networkx 19, rapidfuzz 12, dbt 11, sqlglot 9, pandera 7.
+- **Gold from the CLI:** `make gold` (`uv run dbt build`, with dbt's start-up and a parse
+  that can reuse the last one) took 2.69, 2.70 and 2.70 s on the S8 silver; importing
+  `dbt.cli.main` alone takes about 1 s.
+- **Test suite, S9:** `uv run pytest -q`, three runs: 12.7 to 14.1 s for 184 tests on
+  Windows (3 skipped: the Linux-only concurrency test and the two MinIO ones); the 4 dbt
+  tests take about 6.5 s of that, and collecting them (importing dbt) most of the rest.
+  `make test` 20.4 s.
 - **Silver from the CLI:** `uv run quake-lake silver` on the same bronze as `silver-s8.json`
   prints 1.0 to 1.2 s (the pandas, pyarrow and pandera imports included), against 0.5 to
   0.7 s for `build_silver()` alone. Importing `quake_lake.cli` takes 205 to 274 ms and

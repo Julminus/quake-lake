@@ -2,17 +2,17 @@
 
 A medallion-architecture data pipeline for Indonesian earthquake data: USGS and BMKG feeds land
 raw in a bronze layer on S3 (or MinIO, or a local folder), become one typed, deduplicated
-Parquet table in silver, and are to be modelled with dbt, orchestrated with Airflow and
-deployed with Terraform. Everything runs locally against MinIO; DuckDB joins with the gold
-layer.
+Parquet table in silver, and are modelled with dbt and DuckDB into gold marts. Airflow
+orchestration and a Terraform deployment come next. Everything runs on a laptop: bronze and
+silver against MinIO or a folder, gold in a DuckDB file.
 
 [![CI](https://github.com/Julminus/quake-lake/actions/workflows/ci.yml/badge.svg)](https://github.com/Julminus/quake-lake/actions/workflows/ci.yml)
 ![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Status:** bronze (ingestion) and silver (typed Parquet, validation, deduplication across
-sources, provinces) are built and measured. Gold (dbt), Airflow and Terraform come next; see
-[What's next](#whats-next).
+**Status:** bronze (ingestion), silver (typed Parquet, validation, deduplication across
+sources, provinces) and gold (dbt models, tests and an incremental fact table) are built and
+measured. Airflow and Terraform come next; see [What's next](#whats-next).
 
 ![quake-lake usgs and quake-lake bmkg writing into s3://lake/bronze on a local MinIO, then quake-lake silver rebuilding s3://lake/silver](docs/img/ingest.svg)
 
@@ -20,9 +20,35 @@ sources, provinces) are built and measured. Gold (dbt), Airflow and Terraform co
 
 ## Results
 
-Measured on 2026-11-20 (bronze) and 2026-11-21 (silver) on this PC (Windows 11, a home
-connection in Indonesia). Where each number comes from, and how to re-run it, is in
-[`docs/results/`](docs/results/README.md).
+Measured on 2026-11-20 (bronze), 2026-11-21 (silver) and 2026-11-22 (gold) on this PC
+(Windows 11, a home connection in Indonesia). Where each number comes from, and how to re-run
+it, is in [`docs/results/`](docs/results/README.md).
+
+### Gold
+
+Built with dbt from the silver below (26,782 events).
+
+- **`dbt build` runs 7 models, 2 seeds, 41 data tests and 2 unit tests in 0.9 s** (2.5 s
+  when dbt has to parse the project from scratch; `make gold`, with dbt's start-up, 2.7 s).
+  All 52 pass.
+- **20,638 of the 26,781 earthquakes count as Indonesian (77%).** USGS places the other
+  6,143 in another country: 3,722 in the Philippines, 2,167 in Timor-Leste, 180 in Papua New
+  Guinea, 48 in Palau, 23 in Malaysia, 2 near India's Nicobar Islands and 1 in Australia. The
+  1,206 USGS names only by a sea or region ("Banda Sea", "Molucca Sea") count as Indonesian.
+  Sulawesi Utara keeps 2,056 of the 5,734 events silver gave it.
+- **Where they are:** Maluku 3,943, Maluku Utara 3,616, Sulawesi Utara 2,056, Nusa Tenggara
+  Timur 1,596 and Papua 1,100 lead the 36 provinces with any; by region, Maluku has 7,559 and
+  Kalimantan 42. 68% are shallow (under 70 km) and 708 are deep (300 km or more).
+- **A median of 4 Indonesian earthquakes a day** (UTC) over the 4,343 days since 2015, and 87
+  days with none. On the busiest, 2 April 2026, there were 135, and 133 of them were in the
+  northern Molucca Sea between Bitung and Ternate (up to M6.3); the nearest-province rule
+  splits that cluster, 70 to Sulawesi Utara and 63 to Maluku Utara.
+- **The incremental fact table, on a real next fetch.** After a BMKG snapshot and a 7-day
+  USGS look-back on 2026-11-22, `fct_earthquakes` rewrote **6 of its 26,786 rows** (5 new
+  events, 1 that USGS had revised) and the result was **identical to a full refresh**. At
+  this size it saves nothing: both take 0.09 s, because both read and hash all of silver.
+- **Source freshness:** silver's newest event was 32.6 hours old (pass; dbt warns after 2
+  days and errors after 7).
 
 ### Silver
 
@@ -87,10 +113,13 @@ fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
   same image on every push to `main` and every pull request, and invokes the handler with an
   event it must refuse, which needs no network.
 - **MinIO:** with the image pulled, `docker compose up -d --wait minio` is healthy in 2.3 to
-  2.4 s. The CLI's image is 688 MB since silver (233 MB before): pyarrow alone is 170 MB.
-- **Tests:** 181 offline tests (recorded responses and small built records; one concurrency
-  test runs on Linux only) at 100% branch coverage (CI fails below 90%), in 4.5 to 5 s (about 7 s through `make test`). Two
-  more run against a real MinIO (a storage round trip and a silver rebuild); CI runs them too.
+  2.4 s. The CLI's image is 1,183 MB since gold (233 MB with bronze only, 688 MB with
+  silver): pyarrow alone is 170 MB, and dbt brings DuckDB (66 MB), Babel (33 MB) and more.
+- **Tests:** 185 offline tests (recorded responses and small built records; one concurrency
+  test runs on Linux only) at 100% branch coverage of the Python package (CI fails below
+  90%), in 12.7 to 14 s (about 20 s through `make test`); 4 of them run dbt (8 s of that).
+  Two more run against a real MinIO (a storage round trip and a silver rebuild); CI runs
+  them too.
 
 ## How it works
 
@@ -111,7 +140,16 @@ flowchart LR
     P --> DD["newest version per id,<br/>BMKG folded into USGS<br/>(10 s, 100 km)"]
     DD --> PR["nearest province<br/>(522 regency points)"]
     PR --> SV["silver/events/year=…/month=…/part-0.parquet"]
-    SV -.-> G["gold: dbt marts<br/>(next)"]
+    SV --> STG["dbt staging views"]
+    STG --> INT["int_earthquakes<br/>classes, country of USGS's place"]
+    SEED["seeds: USGS regions → country,<br/>province → region"] --> INT
+    INT --> FCT["fct_earthquakes<br/>(incremental)"]
+    FCT --> AGG["agg_daily_activity,<br/>agg_province_magnitude"]
+    PT["provinces.csv"] --> DIM["dim_province"]
+    SEED --> DIM
+    FCT --> GD[("gold.duckdb")]
+    AGG --> GD
+    DIM --> GD
 ```
 
 Bronze layout, one `ingest_date` (UTC) per run:
@@ -152,6 +190,30 @@ silver/
 | `province_code`, `province`, `province_km` | string, string, double | ISO 3166-2 code and name of the province of the nearest regency reference point, and the distance to that point |
 | `bronze_key` | string | the bronze object the row came from |
 
+- **`make gold`** (`dbt build` on the project in [`transform/`](transform/)) reads silver in
+  place and builds gold into a DuckDB file, `$GOLD_DB`, else `lake/gold.duckdb`:
+
+| Model | Kind | One row per |
+|---|---|---|
+| `stg_silver__events`, `stg_reference__provinces` | view | silver event; regency reference point (`provinces.csv`, read in place) |
+| `int_earthquakes` | view | earthquake (other event types dropped), with magnitude and depth classes and the country of USGS's place |
+| `fct_earthquakes` | incremental table | earthquake in the USGS box, with `in_indonesia` |
+| `dim_province` | table | province (38), with its region and reference points |
+| `agg_daily_activity` | table | UTC day from the first to the last, Indonesian earthquakes only (count, M5+, M6+, shallow, largest magnitude) |
+| `agg_province_magnitude` | table | province and magnitude class, Indonesian earthquakes only |
+
+Two seeds: `usgs_place_regions.csv` (which country each region in USGS's `place` belongs
+to) and `province_regions.csv` (ISO 3166-2's seven regions). The tests: `unique`,
+`not_null`, `accepted_values` and `relationships`, a small `accepted_range` test of the
+project's own, a check that both aggregates count each Indonesian earthquake once, two unit
+tests of the classification, and source freshness. `make freshness` checks silver's newest
+event; `make docs` writes dbt's docs site to `transform/target/static_index.html`, which
+draws the lineage:
+
+![dbt's lineage graph: the silver events and province sources, through staging and int_earthquakes, to fct_earthquakes, dim_province and the two aggregates](docs/img/gold-lineage.png)
+
+<sub>dbt's generated docs (`make docs`), lineage view, captured with headless Chrome.</sub>
+
 ## Quickstart
 
 Needs [uv](https://docs.astral.sh/uv/) and GNU make; Docker for MinIO.
@@ -159,16 +221,25 @@ Needs [uv](https://docs.astral.sh/uv/) and GNU make; Docker for MinIO.
 ```bash
 git clone https://github.com/Julminus/quake-lake && cd quake-lake
 uv sync
-uv run quake-lake bmkg                       # BMKG snapshot into lake/bronze
-uv run quake-lake usgs --since 2026-01-01    # USGS backfill, one request per month
+uv run quake-lake bmkg && uv run quake-lake usgs --since 2026-01-01   # into lake/bronze
 uv run quake-lake silver                     # typed Parquet in lake/silver
-make test                                    # offline, recorded responses
+make gold                                    # dbt build: lake/gold.duckdb, tests included
 ```
+
+Then ask gold something, for instance the provinces with the most M5+ earthquakes:
+
+```bash
+uv run python -c "import duckdb; print(duckdb.connect('lake/gold.duckdb').sql('select province, count(*) as m5_plus from fct_earthquakes join dim_province using (province_code) where in_indonesia and magnitude >= 5 group by 1 order by 2 desc limit 5'))"
+```
+
+`make test` runs the offline tests (recorded responses, no network).
 
 `make backfill` fetches everything since 2015 into `lake/bronze` (about 2.5 minutes), and
 `make silver` rebuilds silver from it. The CLI writes bronze to `$BRONZE_URI` when it is set,
 else to `lake/bronze`, and silver to `$SILVER_URI`, else `lake/silver`; `--bronze` and
-`--silver` override them. `make run` does a BMKG snapshot, the last 7 days of USGS and silver.
+`--silver` override them. `make run` does a BMKG snapshot, the last 7 days of USGS, silver
+and gold. Run dbt from the repository root (the Makefile does): the default paths are
+relative to it, and the folder `$GOLD_DB` goes in must exist.
 
 **With MinIO instead of a local folder:** `make minio` starts it on 127.0.0.1:9000 and creates
 the `lake` bucket, then `make minio-run` runs the same three steps in a container, writing to
@@ -262,21 +333,59 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   bundled, simplified boundaries is the upgrade if a province leaderboard needs those few
   percent.
 - **Every event type stays in silver.** USGS lists one volcanic eruption among the 26,769;
-  silver keeps it as `event_type = volcanic eruption`, and gold decides what to count.
+  silver keeps it as `event_type = volcanic eruption`, and gold's `int_earthquakes` drops it.
+- **What counts as Indonesian is a seed, not code.** The box USGS is queried with reaches the
+  Philippines, Timor-Leste and Papua New Guinea, so gold reads the country from USGS's own
+  `place` ("... of Sarangani, Philippines", or a region such as "Banda Sea") and looks it up
+  in `transform/seeds/usgs_place_regions.csv`. An event is Indonesian unless that country is
+  another one. To change what counts, edit the CSV and rebuild. Limits: it is the country of
+  the nearest town USGS names, not territorial waters, so an event in the Molucca Sea whose
+  nearest town is on Mindanao is foreign; a sea or region with no single country counts as
+  Indonesian; BMKG-only events have no USGS place and count too (all 13 so far name an
+  Indonesian town, and every BMKG event of M5 or more matched a USGS event, whose place then
+  decides). A region
+  the seed doesn't know yet counts as Indonesian, and a `relationships` test warns about it
+  on every build.
+- **The fact keeps every event; the aggregates count the Indonesian ones.**
+  `fct_earthquakes` has all 26,781 earthquakes in the box with `in_indonesia`, so a question
+  about the whole region still has the data, while the daily and province marts answer for
+  Indonesia only.
+- **Incremental by row hash.** Silver is rebuilt in full every run, so there is no
+  "loaded since" column to filter on, and events also leave silver (a BMKG event merged into
+  USGS a day later, an id USGS replaced). `fct_earthquakes` hashes every row
+  (`md5(to_json(row))`), rewrites only the rows whose hash is new (`delete+insert` on
+  `event_id`), and a post-hook deletes the ids silver no longer has. The tests check that an
+  incremental run equals a full refresh after a revision, a rename, a merge and a new event,
+  and so did a real fetch (above). At 27,000 rows it saves no time, since it still reads all
+  of silver; it pays once silver is read incrementally too and the fact is large, or when
+  each write costs money.
+- **The province table is read in place.** `stg_reference__provinces` reads
+  `src/quake_lake/provinces.csv`, the file silver uses, as a dbt source, so the two can't
+  drift apart; the regions come from a separate seed, and a `not_null` test on
+  `dim_province.region` catches a province missing from it.
+- **Days are UTC days.** Indonesia spans three time zones (WIB, WITA, WIT), so a "local day"
+  would depend on the province; `agg_daily_activity` counts UTC days, as its description
+  says, and the fact's columns end in `_utc`.
+- **No dbt packages, no telemetry.** The one test dbt doesn't ship, `accepted_range`, is a
+  few lines in `transform/tests/generic/`, so there is no `dbt deps` step that needs the
+  network; dbt's anonymous usage statistics are off in `dbt_project.yml`. dbt Core 1.12 is
+  used because dbt-duckdb is a Core adapter (dbt prints a notice that v2 exists).
 - **pandas, pyarrow and pandera only where they're needed.** The CLI imports them only for
   `silver`, so the ingest commands start as fast as before, and the Lambda handler never
   imports them; its bundle is still just `src/` on the runtime's boto3. The Docker image
-  carries them all (688 MB), because the Airflow step will run both from it.
+  carries them all, and dbt too (1,183 MB), because the Airflow step will run every step from
+  it; it doesn't hold `transform/` yet.
 - **MinIO from Chainguard.** MinIO stopped publishing community images in 2025 (`minio/minio`
   is gone from Docker Hub), so `compose.yaml` uses Chainguard's build from source, pinned by
   digest. Its ports bind to 127.0.0.1 only.
 
 ## What's next
 
-- **Gold:** dbt-duckdb staging, intermediate and mart models with tests.
-- **Airflow** (`docker compose up` for MinIO, Airflow and the pipeline), then **Terraform** for
-  S3, Lambda with EventBridge schedules, Glue and Athena (plan only), then a **Streamlit**
-  dashboard.
+- **Airflow** (`docker compose up` for MinIO, Airflow and the pipeline, which needs gold to
+  read silver from MinIO through DuckDB's S3 support, and `transform/` in the image), then
+  **Terraform** for S3, Lambda with EventBridge schedules, Glue and Athena (plan only), then a
+  **Streamlit** dashboard on the gold marts.
+- **Gold, later:** local days per province (WIB, WITA, WIT); the marts as Parquet for Athena.
 - **Silver, later:** read only new bronze partitions once a full rebuild gets slow on S3;
   province polygons.
 
