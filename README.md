@@ -28,27 +28,39 @@ it, is in [`docs/results/`](docs/results/README.md).
 
 Built with dbt from the silver below (26,782 events).
 
-- **`dbt build` runs 7 models, 2 seeds, 41 data tests and 2 unit tests in 0.9 s** (2.5 s
-  when dbt has to parse the project from scratch; `make gold`, with dbt's start-up, 2.7 s).
-  All 52 pass.
+- **A full `dbt build` runs 7 models, 2 seeds, 40 data tests and 2 unit tests in 0.9 s**
+  (2.5 s when dbt has to parse the project from scratch; `make gold`, with dbt's start-up,
+  2.7 s on a repeat run and about 5 s on the first). All 51 pass.
 - **20,638 of the 26,781 earthquakes count as Indonesian (77%).** USGS places the other
   6,143 in another country: 3,722 in the Philippines, 2,167 in Timor-Leste, 180 in Papua New
   Guinea, 48 in Palau, 23 in Malaysia, 2 near India's Nicobar Islands and 1 in Australia. The
-  1,206 USGS names only by a sea or region ("Banda Sea", "Molucca Sea") count as Indonesian.
-  Sulawesi Utara keeps 2,056 of the 5,734 events silver gave it.
+  1,193 that USGS names only by a sea or region (1,017 "Banda Sea", 114 "Molucca Sea") and
+  the 13 that only BMKG lists count as Indonesian. Sulawesi Utara keeps 2,056 of the 5,734
+  events silver gave it.
+- **The rule's limit, measured:** USGS names the nearest town on its own list, which can be
+  far away. 287 events it places in the Philippines, 134 in Timor-Leste and 28 in Papua New
+  Guinea are within 50 km of an Indonesian regency reference point, such as one "214 km S of
+  Sarangani, Philippines" that is 10 km from a Sulawesi Utara point. Some of those are
+  Indonesian; the ones near the Timor-Leste border may not be. Polygons of territory would
+  settle it (see the design decisions).
 - **Where they are:** Maluku 3,943, Maluku Utara 3,616, Sulawesi Utara 2,056, Nusa Tenggara
   Timur 1,596 and Papua 1,100 lead the 36 provinces with any; by region, Maluku has 7,559 and
   Kalimantan 42. 68% are shallow (under 70 km) and 708 are deep (300 km or more).
 - **A median of 4 Indonesian earthquakes a day** (UTC) over the 4,343 days since 2015, and 87
-  days with none. On the busiest, 2 April 2026, there were 135, and 133 of them were in the
-  northern Molucca Sea between Bitung and Ternate (up to M6.3); the nearest-province rule
-  splits that cluster, 70 to Sulawesi Utara and 63 to Maluku Utara.
+  days with none. The busiest, 2 April 2026 (UTC), had 135: 133 in the northern Molucca Sea
+  between Bitung and Ternate, in the hours after an M7.4 there at 22:48 UTC on 1 April
+  (07:48 on the 2nd in Maluku Utara's time, WIT). UTC days put the mainshock on the day
+  before, and
+  the nearest-province rule splits the aftershocks, 70 to Sulawesi Utara and 63 to Maluku
+  Utara.
 - **The incremental fact table, on a real next fetch.** After a BMKG snapshot and a 7-day
   USGS look-back on 2026-11-22, `fct_earthquakes` rewrote **6 of its 26,786 rows** (5 new
-  events, 1 that USGS had revised) and the result was **identical to a full refresh**. At
-  this size it saves nothing: both take 0.09 s, because both read and hash all of silver.
-- **Source freshness:** silver's newest event was 32.6 hours old (pass; dbt warns after 2
-  days and errors after 7).
+  events, 1 that USGS had revised) and the result was **identical to a full refresh** (no
+  event left silver in that fetch; the tests cover that case). At this size it saves
+  nothing: both take 0.09 s, because both read and hash all of silver.
+- **Source freshness:** silver's newest event was 33.0 hours old (pass; dbt warns after 3
+  days, since the longest gap between two events since 2015 was 49.7 hours, and errors
+  after 7).
 
 ### Silver
 
@@ -117,7 +129,8 @@ fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
   silver): pyarrow alone is 170 MB, and dbt brings DuckDB (66 MB), Babel (33 MB) and more.
 - **Tests:** 185 offline tests (recorded responses and small built records; one concurrency
   test runs on Linux only) at 100% branch coverage of the Python package (CI fails below
-  90%), in 12.7 to 14 s (about 20 s through `make test`); 4 of them run dbt (8 s of that).
+  90%), in 12.7 to 14 s (about 20 s through `make test`); 4 of them run dbt (about 6.5 s
+  of that).
   Two more run against a real MinIO (a storage round trip and a silver rebuild); CI runs
   them too.
 
@@ -198,16 +211,16 @@ silver/
 | `stg_silver__events`, `stg_reference__provinces` | view | silver event; regency reference point (`provinces.csv`, read in place) |
 | `int_earthquakes` | view | earthquake (other event types dropped), with magnitude and depth classes and the country of USGS's place |
 | `fct_earthquakes` | incremental table | earthquake in the USGS box, with `in_indonesia` |
-| `dim_province` | table | province (38), with its region and reference points |
+| `dim_province` | table | province (38), with its region, its number of reference points and their mean location |
 | `agg_daily_activity` | table | UTC day from the first to the last, Indonesian earthquakes only (count, M5+, M6+, shallow, largest magnitude) |
 | `agg_province_magnitude` | table | province and magnitude class, Indonesian earthquakes only |
 
 Two seeds: `usgs_place_regions.csv` (which country each region in USGS's `place` belongs
 to) and `province_regions.csv` (ISO 3166-2's seven regions). The tests: `unique`,
 `not_null`, `accepted_values` and `relationships`, a small `accepted_range` test of the
-project's own, a check that both aggregates count each Indonesian earthquake once, two unit
-tests of the classification, and source freshness. `make freshness` checks silver's newest
-event; `make docs` writes dbt's docs site to `transform/target/static_index.html`, which
+project's own, a check that both aggregates count each Indonesian earthquake once, and two
+unit tests of the classification. `make freshness` (`dbt source freshness`, not part of the
+build) checks silver's newest event; `make docs` writes dbt's docs site to `transform/target/static_index.html`, which
 draws the lineage:
 
 ![dbt's lineage graph: the silver events and province sources, through staging and int_earthquakes, to fct_earthquakes, dim_province and the two aggregates](docs/img/gold-lineage.png)
@@ -242,7 +255,7 @@ and gold. Run dbt from the repository root (the Makefile does): the default path
 relative to it, and the folder `$GOLD_DB` goes in must exist.
 
 **With MinIO instead of a local folder:** `make minio` starts it on 127.0.0.1:9000 and creates
-the `lake` bucket, then `make minio-run` runs the same three steps in a container, writing to
+the `lake` bucket, then `make minio-run` runs the BMKG, USGS and silver steps (not gold yet) in a container, writing to
 `s3://lake/bronze` and `s3://lake/silver`. The console is at http://127.0.0.1:9001 (user `quakelake`, password
 `quakelake-local`, or your own from `.env`; see `.env.example`). To run the MinIO storage
 tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, then
@@ -334,19 +347,22 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   percent.
 - **Every event type stays in silver.** USGS lists one volcanic eruption among the 26,769;
   silver keeps it as `event_type = volcanic eruption`, and gold's `int_earthquakes` drops it.
-- **What counts as Indonesian is a seed, not code.** The box USGS is queried with reaches the
+- **The country list is a seed, not code.** The box USGS is queried with reaches the
   Philippines, Timor-Leste and Papua New Guinea, so gold reads the country from USGS's own
   `place` ("... of Sarangani, Philippines", or a region such as "Banda Sea") and looks it up
   in `transform/seeds/usgs_place_regions.csv`. An event is Indonesian unless that country is
-  another one. To change what counts, edit the CSV and rebuild. Limits: it is the country of
-  the nearest town USGS names, not territorial waters, so an event in the Molucca Sea whose
-  nearest town is on Mindanao is foreign; a sea or region with no single country counts as
-  Indonesian; BMKG-only events have no USGS place and count too (all 13 so far name an
-  Indonesian town, and every BMKG event of M5 or more matched a USGS event, whose place then
-  decides). A region
-  the seed doesn't know yet counts as Indonesian, and a `relationships` test warns about it
-  on every build.
-- **The fact keeps every event; the aggregates count the Indonesian ones.**
+  another one. To change which regions count, edit the CSV and rebuild. Limits: it is the
+  country of the nearest town on USGS's list, not of the water or land the event is in, so
+  an event 10 km from Sangihe's reference point can be "214 km S of Sarangani,
+  Philippines" (449 foreign-placed events are within 50 km of an Indonesian reference
+  point, above); a sea or region with no single country counts as Indonesian; BMKG-only
+  events have no USGS place and count too (all 13 so far name an Indonesian town, and every
+  BMKG event of M5 or more matched a USGS event, whose place then decides). A region the
+  seed doesn't know yet counts as Indonesian, and a `relationships` test warns about it on
+  every build. A distance rule ("within 50 km of a reference point is Indonesian") would
+  fix Sangihe and break the Timor-Leste border, so the upgrade is territory polygons, not
+  another threshold.
+- **The fact keeps every earthquake; the aggregates count the Indonesian ones.**
   `fct_earthquakes` has all 26,781 earthquakes in the box with `in_indonesia`, so a question
   about the whole region still has the data, while the daily and province marts answer for
   Indonesia only.
@@ -355,8 +371,10 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   USGS a day later, an id USGS replaced). `fct_earthquakes` hashes every row
   (`md5(to_json(row))`), rewrites only the rows whose hash is new (`delete+insert` on
   `event_id`), and a post-hook deletes the ids silver no longer has. The tests check that an
-  incremental run equals a full refresh after a revision, a rename, a merge and a new event,
-  and so did a real fetch (above). At 27,000 rows it saves no time, since it still reads all
+  incremental run equals a full refresh after a revision, a rename, a merge, a new event, a
+  USGS change that leaves `updated` alone and a revised BMKG-only event (which has no
+  `updated`), and that `dbt run --empty` leaves the table alone; so did a real fetch
+  (above, with no event leaving silver). At 27,000 rows it saves no time, since it still reads all
   of silver; it pays once silver is read incrementally too and the fact is large, or when
   each write costs money.
 - **The province table is read in place.** `stg_reference__provinces` reads
@@ -369,7 +387,7 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
 - **No dbt packages, no telemetry.** The one test dbt doesn't ship, `accepted_range`, is a
   few lines in `transform/tests/generic/`, so there is no `dbt deps` step that needs the
   network; dbt's anonymous usage statistics are off in `dbt_project.yml`. dbt Core 1.12 is
-  used because dbt-duckdb is a Core adapter (dbt prints a notice that v2 exists).
+  used because dbt-duckdb is a Core adapter (`dbt --version` notes that v2 exists).
 - **pandas, pyarrow and pandera only where they're needed.** The CLI imports them only for
   `silver`, so the ingest commands start as fast as before, and the Lambda handler never
   imports them; its bundle is still just `src/` on the runtime's boto3. The Docker image

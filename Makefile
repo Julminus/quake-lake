@@ -2,8 +2,8 @@
 # and cmd.exe (GNU make on Windows without Git Bash on PATH).
 
 # The CLI writes to $BRONZE_URI when it is set, else to lake/bronze; silver to
-# $SILVER_URI, else lake/silver. dbt reads silver from there and builds gold into
-# $GOLD_DB, else lake/gold.duckdb.
+# $SILVER_URI, else lake/silver. dbt reads silver from there (a local folder only, for
+# now: not s3://) and builds gold into $GOLD_DB, else lake/gold.duckdb.
 SINCE ?= 2015-01-01
 export DBT_PROJECT_DIR := transform
 export DBT_PROFILES_DIR := transform

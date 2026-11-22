@@ -9,7 +9,7 @@ Indonesia, Docker 29.9.3. The README quotes these files.
 | `backfill-s7-minio.json` | The same backfill into MinIO (`compose.yaml`), two minutes later | the same script with `--bronze s3://lake/measure-s7/bronze` and the MinIO variables from `.env.example` |
 | `backfill-s7-before-gzip.json` | The first backfill, before `fetch()` asked for gzip | the script as of commit `1a8613f`, which did not yet time storage writes (no `storage_put_seconds_total`) |
 | `silver-s8.json` | Silver built from the local bronze: the S7 backfill plus a 30-day USGS look-back and one BMKG snapshot, both fetched at 18:05 UTC on 2026-11-21 (147 objects). Counts, three timed builds and whether they were byte-identical, every BMKG-USGS match with its time and distance, pairs of distinct USGS events within the match tolerance, provinces, and the province step scored against polygons | `uv run quake-lake bmkg` and `uv run quake-lake usgs --days 30` on top of the S7 backfill, then `uv run --with shapely python scripts/measure_silver.py --polygons geoBoundaries-IDN-ADM1_simplified.geojson` (the polygons: geoBoundaries' gbHumanitarian IDN ADM1, simplified, commit `9469f09`, 6.6 MB, not in the repo; https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbHumanitarian/IDN/ADM1/geoBoundaries-IDN-ADM1_simplified.geojson). It also compares the BMKG events in bronze with the recorded fixtures in `tests/fixtures/` |
-| `gold-s9.json` | Gold built with dbt from a silver of the same 147 bronze objects as `silver-s8.json`: the dbt nodes and their results, three timed full builds, the mart counts, source freshness, and an incremental run of `fct_earthquakes` after a real fetch (a BMKG snapshot and the 7-day USGS look-back at 18:16 UTC on 2026-11-22), compared with a full refresh | `uv run python scripts/measure_gold.py --bronze lake/bronze` (silver and gold go to a temporary folder; only the fetch writes to the bronze) |
+| `gold-s9.json` | Gold built with dbt from a silver of the same 147 bronze objects as `silver-s8.json`: the dbt nodes and their results, three timed full builds, the mart counts, source freshness, and an incremental run of `fct_earthquakes` after a real fetch (a BMKG snapshot and the 7-day USGS look-back at 18:42 UTC on 2026-11-22), compared with a full refresh | `uv run python scripts/measure_gold.py --bronze lake/bronze` (silver and gold go to a temporary folder; only the fetch writes to the bronze) |
 | `lambda-s7.log` | Three cold starts of the handler in `public.ecr.aws/lambda/python:3.12` under its local emulator, one live invocation each (`{"days": 2}`: three BMKG feeds and two days of USGS), with the emulator's raw `INIT REPORT` / `REPORT` lines and the handler's log | `docker run` with `src/` mounted at `/var/task`, then a `curl` to the invocation URL, as in the CI `docker` job |
 
 ## Measured by hand (no file)
@@ -27,9 +27,15 @@ Indonesia, Docker 29.9.3. The README quotes these files.
   botocore 31, networkx 19, rapidfuzz 12, dbt 11, sqlglot 9, pandera 7.
 - **Gold from the CLI:** `make gold` (`uv run dbt build`, with dbt's start-up and a parse
   that can reuse the last one) took 2.69, 2.70 and 2.70 s on the S8 silver; importing
-  `dbt.cli.main` alone takes about 1 s.
-- **Test suite, S9:** `uv run pytest -q`, three runs: 12.7 to 14.1 s for 184 tests on
-  Windows (3 skipped: the Linux-only concurrency test and the two MinIO ones); the 4 dbt
+  `dbt.cli.main` alone takes about 1 s. In a fresh clone the first `make gold`, which parses
+  the whole project, took 5.0 s (on the quickstart's 2026 silver; repeat runs 2.5 s).
+- **Gaps between events (for the freshness threshold):** over the S8 silver, ordered by
+  `time`, the longest gap between two consecutive events is 49.7 hours (2 days 01:41:54);
+  148 gaps exceed 24 hours, 15 exceed 36 and 1 exceeds 48. DuckDB: `with t as (select time
+  - lag(time) over (order by time) as gap from read_parquet('lake/silver/events/*/*/*.parquet'))
+  select max(gap) from t`.
+- **Test suite, S9:** `uv run pytest -q`, three runs: 12.7 to 14.1 s, 184 passed and 3
+  skipped on Windows (the Linux-only concurrency test and the two MinIO ones); the 4 dbt
   tests take about 6.5 s of that, and collecting them (importing dbt) most of the rest.
   `make test` 20.4 s.
 - **Silver from the CLI:** `uv run quake-lake silver` on the same bronze as `silver-s8.json`
