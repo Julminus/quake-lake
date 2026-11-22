@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -78,10 +79,22 @@ def test_gold_builds_from_the_recorded_feeds(lake):
         "select magnitude_class, province_code, in_indonesia from fct_earthquakes"
         " where event_id = 'us1000h3p4'",
     ) == [("major", "ID-ST", True)]
+    # The aggregates, against the recorded features themselves.
+    palu = json.loads(fixture("usgs-palu-2018-09-28.json"))["features"]
+    ours = [f for f in palu if f["properties"]["place"].endswith(", Indonesia")]
+    mags = [f["properties"]["mag"] for f in ours]
+    shallow = sum(f["geometry"]["coordinates"][2] < 70 for f in ours)
     assert query(
         lake,
-        "select earthquakes, m6_plus from agg_daily_activity where activity_date = '2018-09-28'",
-    ) == [(80, 2)]
+        "select earthquakes, m5_plus, m6_plus, shallow, max_magnitude from agg_daily_activity"
+        " where activity_date = '2018-09-28'",
+    ) == [(80, sum(m >= 5 for m in mags), sum(m >= 6 for m in mags), shallow, max(mags))]
+    (main,) = [f for f in palu if f["id"] == "us1000h3p4"]
+    assert query(
+        lake,
+        "select earthquakes, max_magnitude, mean_depth_km from agg_province_magnitude"
+        " where province_code = 'ID-ST' and magnitude_class = 'major'",
+    ) == [(1, 7.5, round(main["geometry"]["coordinates"][2], 1))]
     # Every day from 2018-09-28 to the last BMKG event, quiet ones as 0.
     days = (datetime(2026, 11, 20) - datetime(2018, 9, 28)).days + 1
     assert query(lake, "select count(*), sum(earthquakes) from agg_daily_activity") == [(days, 95)]
@@ -112,21 +125,35 @@ def test_an_incremental_run_matches_a_full_refresh(lake):
     day1 = USGS_KEY
     day2 = "source=usgs/ingest_date=2026-11-21/20261102T000000Z_20261121T000000Z.json"
     place = {"place": "10 km N of Palu, Indonesia"}
+    quiet = t0 + timedelta(hours=5)  # changes without a new `updated`
     first = {
         day1: usgs(
             feature("same", t=t0, **place),
             feature("revised", t=t0 + timedelta(hours=1), mag=5.0, **place),
             feature("renamed", t=t0 + timedelta(hours=2), **place),
+            feature("quiet", t=quiet, mag=4.0, **place),
         ),
-        # BMKG-only for now; USGS lists it in the next fetch.
         "source=bmkg/ingest_date=2026-11-20/gempaterkini_20261120T180000Z.json": bmkg(
-            gempa(t=t0 + timedelta(hours=3), lat=-1.0, lon=120.0)
+            # BMKG-only for now; USGS lists it in the next fetch.
+            gempa(t=t0 + timedelta(hours=3), lat=-1.0, lon=120.0),
+            # BMKG-only for good; BMKG revises its magnitude, and BMKG rows have no `updated`.
+            gempa(t=quiet, lat=-5.0, lon=105.0, mag="3.0"),
         ),
     }
     silver(lake, first)
     assert dbt(lake, "build").success
-    before = {row[0] for row in fct(lake)}
-    assert before == {"same", "revised", "renamed", "bmkg-20261110T030000Z"}
+    before = fct(lake)
+    assert {row[0] for row in before} == {
+        "same",
+        "revised",
+        "renamed",
+        "quiet",
+        "bmkg-20261110T030000Z",
+        "bmkg-20261110T050000Z",
+    }
+    # --empty runs the models on no rows; the clean-up hook must not empty the table.
+    assert dbt(lake, "run", "--select", "fct_earthquakes", "--empty").success
+    assert fct(lake) == before
 
     later = t0 + timedelta(days=1)
     second = {
@@ -140,17 +167,29 @@ def test_an_incremental_run_matches_a_full_refresh(lake):
                 "matches-bmkg", t=t0 + timedelta(hours=3, seconds=2), lat=-1.1, lon=120.0, **place
             ),
             feature("new", t=t0 + timedelta(hours=4), **place),
-        )
+            feature("quiet", t=quiet, mag=4.6, **place),  # same `updated` as before
+        ),
+        "source=bmkg/ingest_date=2026-11-21/gempaterkini_20261121T180000Z.json": bmkg(
+            gempa(t=quiet, lat=-5.0, lon=105.0, mag="3.4")
+        ),
     }
     silver(lake, second)
     # The rows the incremental run will write: the new and the changed, not "same".
     shown = dbt(lake, "show", "--select", "fct_earthquakes", "--limit", "100")
     written = {r["event_id"] for r in shown.result.results[0].agate_table}
-    assert written == {"revised", "new-id", "matches-bmkg", "new"}
+    assert written == {"revised", "new-id", "matches-bmkg", "new", "quiet", "bmkg-20261110T050000Z"}
     assert dbt(lake, "run", "--select", "fct_earthquakes").success
     incremental = fct(lake)
 
-    assert {row[0] for row in incremental} == {"same", "revised", "new-id", "matches-bmkg", "new"}
+    assert {row[0] for row in incremental} == {
+        "same",
+        "revised",
+        "new-id",
+        "matches-bmkg",
+        "new",
+        "quiet",
+        "bmkg-20261110T050000Z",
+    }
     assert dbt(lake, "run", "--select", "fct_earthquakes", "--full-refresh").success
     assert incremental == fct(lake)
 

@@ -3,14 +3,15 @@
 -- Incremental: silver is rebuilt in full each run, so there is no "new rows since"
 -- column to filter on. Each run compares a hash of every row with the hashes already
 -- here, rewrites only the events that are new or changed, and deletes events silver no
--- longer has (a BMKG event later merged into USGS, an id USGS replaced).
+-- longer has (a BMKG event later merged into USGS, an id USGS replaced). The hook reads
+-- int_earthquakes with .render(), so `dbt run --empty` can't make it delete every row.
 {{
     config(
         materialized='incremental',
         unique_key='event_id',
         incremental_strategy='delete+insert',
         on_schema_change='fail',
-        post_hook="delete from {{ this }} where event_id not in (select event_id from {{ ref('int_earthquakes') }})",
+        post_hook="delete from {{ this }} where event_id not in (select event_id from {{ ref('int_earthquakes').render() }} where event_id is not null)",
     )
 }}
 
