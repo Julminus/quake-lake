@@ -89,12 +89,28 @@ def test_gold_builds_from_the_recorded_feeds(lake):
         "select earthquakes, m5_plus, m6_plus, shallow, max_magnitude from agg_daily_activity"
         " where activity_date = '2018-09-28'",
     ) == [(80, sum(m >= 5 for m in mags), sum(m >= 6 for m in mags), shallow, max(mags))]
-    (main,) = [f for f in palu if f["id"] == "us1000h3p4"]
-    assert query(
+    # Every province and class, recomputed from the fact's rows (groups of up to dozens).
+    groups: dict[tuple, list[tuple]] = {}
+    for p, cls, mag, depth, t in query(
         lake,
-        "select earthquakes, max_magnitude, mean_depth_km from agg_province_magnitude"
-        " where province_code = 'ID-ST' and magnitude_class = 'major'",
-    ) == [(1, 7.5, round(main["geometry"]["coordinates"][2], 1))]
+        "select province_code, magnitude_class, magnitude, depth_km, origin_time_utc"
+        " from fct_earthquakes where in_indonesia",
+    ):
+        groups.setdefault((p, cls), []).append((mag, depth, t))
+    expected = {
+        k: (len(v), max(m for m, _, _ in v), min(t for *_, t in v), max(t for *_, t in v))
+        for k, v in groups.items()
+    }
+    depths = {k: sum(d for _, d, _ in v) / len(v) for k, v in groups.items()}
+    rows = query(
+        lake,
+        "select province_code, magnitude_class, earthquakes, max_magnitude, first_utc, last_utc,"
+        " mean_depth_km from agg_province_magnitude",
+    )
+    assert {(p, c): (n, mx, first, last) for p, c, n, mx, first, last, _ in rows} == expected
+    for p, c, *_, depth in rows:  # SQL rounds half away from zero, Python to even
+        assert depth == pytest.approx(depths[p, c], abs=0.051)
+    assert max(len(v) for v in groups.values()) > 1
     # Every day from 2018-09-28 to the last BMKG event, quiet ones as 0.
     days = (datetime(2026, 11, 20) - datetime(2018, 9, 28)).days + 1
     assert query(lake, "select count(*), sum(earthquakes) from agg_daily_activity") == [(days, 95)]
@@ -151,8 +167,13 @@ def test_an_incremental_run_matches_a_full_refresh(lake):
         "bmkg-20261110T030000Z",
         "bmkg-20261110T050000Z",
     }
-    # --empty runs the models on no rows; the clean-up hook must not empty the table.
-    assert dbt(lake, "run", "--select", "fct_earthquakes", "--empty").success
+    # --empty runs the models on no rows and leaves int_earthquakes an empty view; the
+    # clean-up hook must not empty the table, then or on the next run of the fact alone.
+    assert dbt(lake, "run", "--empty").success
+    assert fct(lake) == before
+    assert dbt(lake, "run", "--select", "fct_earthquakes").success
+    assert fct(lake) == before
+    assert dbt(lake, "run").success  # rebuilds the views from silver
     assert fct(lake) == before
 
     later = t0 + timedelta(days=1)
