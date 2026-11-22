@@ -6,7 +6,7 @@
   "dbt": {
     "nodes": {
       "seed": 2,
-      "test": 41,
+      "test": 40,
       "model (view)": 3,
       "model (table)": 3,
       "unit_test": 2,
@@ -14,24 +14,24 @@
     },
     "statuses": {
       "success": 9,
-      "pass": 43
+      "pass": 42
     },
-    "build_seconds": [
-      2.53,
+    "full_build_seconds": [
+      2.52,
       0.95,
       0.89
     ],
-    "dbt_elapsed_seconds": [
-      0.93,
-      0.76,
+    "full_build_dbt_elapsed_seconds": [
+      0.92,
+      0.75,
       0.78
     ],
     "slowest_nodes": {
-      "fct_earthquakes": 0.139,
-      "test_magnitude_and_depth_classes": 0.085,
-      "test_the_country_comes_from_usgs_place_only": 0.06,
-      "source_unique_silver_events_event_id": 0.059,
-      "source_not_null_silver_events_event_id": 0.051
+      "fct_earthquakes": 0.149,
+      "test_magnitude_and_depth_classes": 0.09,
+      "province_regions": 0.057,
+      "stg_reference__provinces": 0.055,
+      "source_not_null_silver_events_event_id": 0.054
     }
   },
   "marts": {
@@ -50,6 +50,21 @@
         "MY": 23,
         "IN": 2,
         "AU": 1
+      },
+      "no_country_by_row_source": {
+        "usgs": 1193,
+        "bmkg": 13
+      },
+      "foreign_within_50_km_of_an_indonesian_point": {
+        "PH": 287,
+        "TL": 134,
+        "PG": 28
+      },
+      "foreign_within_100_km_of_an_indonesian_point": {
+        "PH": 760,
+        "TL": 432,
+        "PG": 111,
+        "MY": 3
       },
       "indonesian_by_magnitude_class": {
         "light": 18381,
@@ -76,6 +91,12 @@
         "activity_date": "2026-04-02",
         "earthquakes": 135,
         "max_magnitude": 6.3
+      },
+      "largest_around_the_busiest_day": {
+        "event_id": "us6000slss",
+        "magnitude": 7.4,
+        "origin_time_utc": "2026-04-01 22:48:13.063000",
+        "place": "129 km ESE of Bitung, Indonesia"
       }
     },
     "agg_province_magnitude": {
@@ -114,8 +135,8 @@
         "Kalimantan Utara": 15,
         "DKI Jakarta": 14,
         "Riau": 7,
-        "Kalimantan Selatan": 4,
         "Kalimantan Barat": 4,
+        "Kalimantan Selatan": 4,
         "Kalimantan Tengah": 2,
         "Papua Selatan": 1
       },
@@ -140,20 +161,20 @@
   "freshness": {
     "status": "pass",
     "max_loaded_at": "2026-11-21 09:42:09.120000+00:00",
-    "age_hours": 32.6
+    "age_hours": 33.0
   },
   "incremental": {
-    "fetched_at": "2026-11-22T18:16:12+00:00",
+    "fetched_at": "2026-11-22T18:41:58+00:00",
     "rows_before": 26781,
     "rows_after": 26786,
-    "rows_written": 6,
+    "rows_to_write": 6,
     "new_events": 5,
     "changed_events": 1,
     "deleted_events": 0,
-    "fct_seconds_incremental": 0.091,
-    "fct_seconds_full_refresh": 0.093,
-    "run_seconds_incremental": 0.22,
-    "run_seconds_full_refresh": 0.21,
+    "fct_seconds_incremental": 0.093,
+    "fct_seconds_full_refresh": 0.098,
+    "run_seconds_incremental": 0.21,
+    "run_seconds_full_refresh": 0.22,
     "identical_to_full_refresh": true
   }
 }
