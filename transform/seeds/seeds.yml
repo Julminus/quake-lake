@@ -23,7 +23,7 @@ seeds:
       - name: place_region
         data_tests: [unique, not_null]
       - name: country_code
-        description: ISO 3166-1 alpha-2, or empty. A code not listed below warns (a typo such as `id` would make every event foreign); add a new country here.
+        description: ISO 3166-1 alpha-2, or empty. A code not listed below warns (a typo such as `id` would make every event USGS places in Indonesia foreign); add a new country here.
         data_tests:
           - accepted_values:
               arguments:

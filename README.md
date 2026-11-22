@@ -128,7 +128,7 @@ fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
   silver): pyarrow alone is 170 MB, and dbt brings DuckDB (66 MB), Babel (33 MB) and more.
 - **Tests:** 185 offline tests (recorded responses and small built records; one concurrency
   test runs on Linux only) at 100% branch coverage of the Python package (CI fails below
-  90%), in 12.7 to 14 s (about 20 s through `make test`); 4 of them run dbt (about 6.5 s
+  90%), in 12.7 to 14 s (about 21 s through `make test`); 4 of them run dbt (about 7 s
   of that).
   Two more run against a real MinIO (a storage round trip and a silver rebuild); CI runs
   them too.
@@ -358,10 +358,11 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   events have no USGS place and count too (all 13 so far name an Indonesian town, and every
   BMKG event of M5 or more matched a USGS event, whose place then decides). A region the
   seed doesn't know yet counts as Indonesian, and a `relationships` test warns about it on
-  every build; a country code the YAML doesn't list warns too (a typo such as `id` would
-  make every event foreign) without failing the build. A distance rule ("within 50 km of a reference point is Indonesian") would
-  fix Sangihe and break the Timor-Leste border, so the upgrade is territory polygons, not
-  another threshold.
+  every build; a country code the YAML doesn't list warns too, without failing the build (a
+  typo such as `id` would make the 19,430 events USGS places in Indonesia foreign). A
+  distance rule ("within 50 km of a reference point is Indonesian") would fix Sangihe and
+  break the Timor-Leste border, so the upgrade is territory polygons, not another
+  threshold.
 - **The fact keeps every earthquake; the aggregates count the Indonesian ones.**
   `fct_earthquakes` has all 26,781 earthquakes in the box with `in_indonesia`, so a question
   about the whole region still has the data, while the daily and province marts answer for
@@ -372,8 +373,9 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   (`md5(to_json(row))`), rewrites only the rows whose hash is new (`delete+insert` on
   `event_id`), and a post-hook deletes the ids silver no longer has. Like silver's refusal of
   an empty bronze, that delete does nothing when `int_earthquakes` is empty, so `dbt run
-  --empty` (which leaves the views empty) can't wipe the table; the limit is that an event
-  can't leave a silver that has none left. The tests check that an incremental run equals a
+  --empty` (which leaves the views empty) can't wipe the table; the limit is that the last
+  earthquakes can't leave (if silver had no earthquakes left, the fact would keep its old
+  ones, while a full refresh would be empty). The tests check that an incremental run equals a
   full refresh after a revision, a rename, a merge, a new event, a USGS change that leaves
   `updated` alone and a revised BMKG-only event (which has no `updated`), and that `--empty`
   and the run after it leave the table alone; so did a real fetch (above, with no event

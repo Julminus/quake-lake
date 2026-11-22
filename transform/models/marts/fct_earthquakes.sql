@@ -6,6 +6,7 @@
 -- longer has (a BMKG event later merged into USGS, an id USGS replaced). Like silver's
 -- guard against an empty bronze, the delete does nothing when int_earthquakes is empty
 -- (`dbt run --empty`, or a view left empty by one), so it can't wipe the table.
+-- shortcut: so the last earthquakes can't leave either; a full refresh clears them.
 {{
     config(
         materialized='incremental',

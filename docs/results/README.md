@@ -40,12 +40,13 @@ Indonesia, Docker 29.9.3. The README quotes these files.
   Islands), Nabire and Pelabuhanratu. The 132 split 69 to Sulawesi Utara and 63 to Maluku
   Utara by the nearest-province rule. The M7.4 before them is in `gold-s9.json`
   (`largest_around_the_busiest_day`). Query: `select regexp_extract(place, 'of (.*),', 1),
-  province_code, count(*) from fct_earthquakes where in_indonesia and origin_date_utc =
-  '2026-04-02' group by all`.
+  province_code, count(*), min(latitude), max(latitude) from fct_earthquakes where
+  in_indonesia and origin_date_utc = '2026-04-02' group by all`.
 - **Test suite, S9:** `uv run pytest -q`, three runs: 12.7 to 14.1 s, 184 passed and 3
-  skipped on Windows (the Linux-only concurrency test and the two MinIO ones); the 4 dbt
-  tests take about 6.5 s of that, and collecting them (importing dbt) most of the rest.
-  `make test` 20.4 s.
+  skipped on Windows (the Linux-only concurrency test and the two MinIO ones); after the
+  review rounds added dbt runs to them, 12.7 to 12.8 s, of which the 4 dbt tests take about
+  7.3 s (`--durations`), and collecting them (importing dbt) much of the rest. `make test`
+  20.4 s, then 20.8 s.
 - **Silver from the CLI:** `uv run quake-lake silver` on the same bronze as `silver-s8.json`
   prints 1.0 to 1.2 s (the pandas, pyarrow and pandera imports included), against 0.5 to
   0.7 s for `build_silver()` alone. Importing `quake_lake.cli` takes 205 to 274 ms and
