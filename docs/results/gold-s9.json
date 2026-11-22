@@ -5,33 +5,33 @@
   },
   "dbt": {
     "nodes": {
+      "test": 41,
       "seed": 2,
-      "test": 40,
       "model (view)": 3,
       "model (table)": 3,
       "unit_test": 2,
       "model (incremental)": 1
     },
     "statuses": {
-      "success": 9,
-      "pass": 42
+      "pass": 43,
+      "success": 9
     },
     "full_build_seconds": [
-      2.52,
-      0.95,
-      0.89
+      2.56,
+      0.98,
+      0.92
     ],
     "full_build_dbt_elapsed_seconds": [
-      0.92,
-      0.75,
-      0.78
+      0.95,
+      0.79,
+      0.81
     ],
     "slowest_nodes": {
-      "fct_earthquakes": 0.149,
-      "test_magnitude_and_depth_classes": 0.09,
-      "province_regions": 0.057,
-      "stg_reference__provinces": 0.055,
-      "source_not_null_silver_events_event_id": 0.054
+      "fct_earthquakes": 0.16,
+      "test_the_country_comes_from_usgs_place_only": 0.09,
+      "stg_reference__provinces": 0.07,
+      "usgs_place_regions": 0.056,
+      "agg_daily_activity": 0.055
     }
   },
   "marts": {
@@ -72,8 +72,8 @@
         "strong": 134,
         "minor": 85,
         "major": 16,
-        "micro": 1,
-        "unknown": 1
+        "unknown": 1,
+        "micro": 1
       },
       "indonesian_by_depth_class": {
         "shallow": 13934,
@@ -161,20 +161,20 @@
   "freshness": {
     "status": "pass",
     "max_loaded_at": "2026-11-21 09:42:09.120000+00:00",
-    "age_hours": 33.0
+    "age_hours": 33.3
   },
   "incremental": {
-    "fetched_at": "2026-11-22T18:41:58+00:00",
+    "fetched_at": "2026-11-22T18:57:36+00:00",
     "rows_before": 26781,
     "rows_after": 26786,
     "rows_to_write": 6,
     "new_events": 5,
     "changed_events": 1,
     "deleted_events": 0,
-    "fct_seconds_incremental": 0.093,
-    "fct_seconds_full_refresh": 0.098,
-    "run_seconds_incremental": 0.21,
-    "run_seconds_full_refresh": 0.22,
+    "fct_seconds_incremental": 0.106,
+    "fct_seconds_full_refresh": 0.106,
+    "run_seconds_incremental": 0.23,
+    "run_seconds_full_refresh": 0.23,
     "identical_to_full_refresh": true
   }
 }

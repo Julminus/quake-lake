@@ -9,7 +9,7 @@ Indonesia, Docker 29.9.3. The README quotes these files.
 | `backfill-s7-minio.json` | The same backfill into MinIO (`compose.yaml`), two minutes later | the same script with `--bronze s3://lake/measure-s7/bronze` and the MinIO variables from `.env.example` |
 | `backfill-s7-before-gzip.json` | The first backfill, before `fetch()` asked for gzip | the script as of commit `1a8613f`, which did not yet time storage writes (no `storage_put_seconds_total`) |
 | `silver-s8.json` | Silver built from the local bronze: the S7 backfill plus a 30-day USGS look-back and one BMKG snapshot, both fetched at 18:05 UTC on 2026-11-21 (147 objects). Counts, three timed builds and whether they were byte-identical, every BMKG-USGS match with its time and distance, pairs of distinct USGS events within the match tolerance, provinces, and the province step scored against polygons | `uv run quake-lake bmkg` and `uv run quake-lake usgs --days 30` on top of the S7 backfill, then `uv run --with shapely python scripts/measure_silver.py --polygons geoBoundaries-IDN-ADM1_simplified.geojson` (the polygons: geoBoundaries' gbHumanitarian IDN ADM1, simplified, commit `9469f09`, 6.6 MB, not in the repo; https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbHumanitarian/IDN/ADM1/geoBoundaries-IDN-ADM1_simplified.geojson). It also compares the BMKG events in bronze with the recorded fixtures in `tests/fixtures/` |
-| `gold-s9.json` | Gold built with dbt from a silver of the same 147 bronze objects as `silver-s8.json`: the dbt nodes and their results, three timed full builds, the mart counts, source freshness, and an incremental run of `fct_earthquakes` after a real fetch (a BMKG snapshot and the 7-day USGS look-back at 18:42 UTC on 2026-11-22), compared with a full refresh | `uv run python scripts/measure_gold.py --bronze lake/bronze` (silver and gold go to a temporary folder; only the fetch writes to the bronze) |
+| `gold-s9.json` | Gold built with dbt from a silver of the same 147 bronze objects as `silver-s8.json`: the dbt nodes and their results, three timed full builds, the mart counts, source freshness, and an incremental run of `fct_earthquakes` after a real fetch (a BMKG snapshot and the 7-day USGS look-back at 18:58 UTC on 2026-11-22), compared with a full refresh | `uv run python scripts/measure_gold.py --bronze lake/bronze` (silver and gold go to a temporary folder; only the fetch writes to the bronze) |
 | `lambda-s7.log` | Three cold starts of the handler in `public.ecr.aws/lambda/python:3.12` under its local emulator, one live invocation each (`{"days": 2}`: three BMKG feeds and two days of USGS), with the emulator's raw `INIT REPORT` / `REPORT` lines and the handler's log | `docker run` with `src/` mounted at `/var/task`, then a `curl` to the invocation URL, as in the CI `docker` job |
 
 ## Measured by hand (no file)
@@ -34,6 +34,14 @@ Indonesia, Docker 29.9.3. The README quotes these files.
   148 gaps exceed 24 hours, 15 exceed 36 and 1 exceeds 48. DuckDB: `with t as (select time
   - lag(time) over (order by time) as gap from read_parquet('lake/silver/events/*/*/*.parquet'))
   select max(gap) from t`.
+- **The busiest day, by the town USGS names:** of the 135 Indonesian earthquakes on
+  2026-04-02 (UTC) in the S8 silver's gold, 71 are "... of Bitung", 61 "... of Ternate"
+  (all 132 between 0.80 and 1.53°N), and one each near Tobelo (3.27°N, off the Talaud
+  Islands), Nabire and Pelabuhanratu. The 132 split 69 to Sulawesi Utara and 63 to Maluku
+  Utara by the nearest-province rule. The M7.4 before them is in `gold-s9.json`
+  (`largest_around_the_busiest_day`). Query: `select regexp_extract(place, 'of (.*),', 1),
+  province_code, count(*) from fct_earthquakes where in_indonesia and origin_date_utc =
+  '2026-04-02' group by all`.
 - **Test suite, S9:** `uv run pytest -q`, three runs: 12.7 to 14.1 s, 184 passed and 3
   skipped on Windows (the Linux-only concurrency test and the two MinIO ones); the 4 dbt
   tests take about 6.5 s of that, and collecting them (importing dbt) most of the rest.

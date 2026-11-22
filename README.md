@@ -28,9 +28,9 @@ it, is in [`docs/results/`](docs/results/README.md).
 
 Built with dbt from the silver below (26,782 events).
 
-- **A full `dbt build` runs 7 models, 2 seeds, 40 data tests and 2 unit tests in 0.9 s**
-  (2.5 s when dbt has to parse the project from scratch; `make gold`, with dbt's start-up,
-  2.7 s on a repeat run and about 5 s on the first). All 51 pass.
+- **A full `dbt build` runs 7 models, 2 seeds, 41 data tests and 2 unit tests in about
+  1 s** (0.92 to 0.98 s; 2.6 s when dbt has to parse the project from scratch; `make gold`,
+  with dbt's start-up, 2.7 s on a repeat run and about 5 s on the first). All 52 pass.
 - **20,638 of the 26,781 earthquakes count as Indonesian (77%).** USGS places the other
   6,143 in another country: 3,722 in the Philippines, 2,167 in Timor-Leste, 180 in Papua New
   Guinea, 48 in Palau, 23 in Malaysia, 2 near India's Nicobar Islands and 1 in Australia. The
@@ -47,20 +47,19 @@ Built with dbt from the silver below (26,782 events).
   Timur 1,596 and Papua 1,100 lead the 36 provinces with any; by region, Maluku has 7,559 and
   Kalimantan 42. 68% are shallow (under 70 km) and 708 are deep (300 km or more).
 - **A median of 4 Indonesian earthquakes a day** (UTC) over the 4,343 days since 2015, and 87
-  days with none. The busiest, 2 April 2026 (UTC), had 135: 133 in the northern Molucca Sea
-  between Bitung and Ternate, in the hours after an M7.4 there at 22:48 UTC on 1 April
-  (07:48 on the 2nd in Maluku Utara's time, WIT). UTC days put the mainshock on the day
-  before, and
-  the nearest-province rule splits the aftershocks, 70 to Sulawesi Utara and 63 to Maluku
-  Utara.
+  days with none. The busiest, 2 April 2026 (UTC), had 135: 132 of them in the northern
+  Molucca Sea, which USGS places near Bitung or Ternate, in the hours after an M7.4 there
+  at 22:48 UTC on 1 April (07:48 on the 2nd in Maluku Utara's time, WIT). UTC days put the
+  M7.4 on the day before, and the nearest-province rule splits the 132 between Sulawesi
+  Utara (69) and Maluku Utara (63).
 - **The incremental fact table, on a real next fetch.** After a BMKG snapshot and a 7-day
   USGS look-back on 2026-11-22, `fct_earthquakes` rewrote **6 of its 26,786 rows** (5 new
   events, 1 that USGS had revised) and the result was **identical to a full refresh** (no
   event left silver in that fetch; the tests cover that case). At this size it saves
-  nothing: both take 0.09 s, because both read and hash all of silver.
-- **Source freshness:** silver's newest event was 33.0 hours old (pass; dbt warns after 3
-  days, since the longest gap between two events since 2015 was 49.7 hours, and errors
-  after 7).
+  nothing: both take about 0.1 s, because both read and hash all of silver.
+- **Source freshness:** silver's newest event was 33.3 hours old (pass). dbt warns after 4
+  days and errors after 7: the longest gap between two events since 2015 was 49.7 hours,
+  and a daily fetch can add a day to that.
 
 ### Silver
 
@@ -359,7 +358,8 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   events have no USGS place and count too (all 13 so far name an Indonesian town, and every
   BMKG event of M5 or more matched a USGS event, whose place then decides). A region the
   seed doesn't know yet counts as Indonesian, and a `relationships` test warns about it on
-  every build. A distance rule ("within 50 km of a reference point is Indonesian") would
+  every build; a country code the YAML doesn't list warns too (a typo such as `id` would
+  make every event foreign) without failing the build. A distance rule ("within 50 km of a reference point is Indonesian") would
   fix Sangihe and break the Timor-Leste border, so the upgrade is territory polygons, not
   another threshold.
 - **The fact keeps every earthquake; the aggregates count the Indonesian ones.**
@@ -370,13 +370,16 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   "loaded since" column to filter on, and events also leave silver (a BMKG event merged into
   USGS a day later, an id USGS replaced). `fct_earthquakes` hashes every row
   (`md5(to_json(row))`), rewrites only the rows whose hash is new (`delete+insert` on
-  `event_id`), and a post-hook deletes the ids silver no longer has. The tests check that an
-  incremental run equals a full refresh after a revision, a rename, a merge, a new event, a
-  USGS change that leaves `updated` alone and a revised BMKG-only event (which has no
-  `updated`), and that `dbt run --empty` leaves the table alone; so did a real fetch
-  (above, with no event leaving silver). At 27,000 rows it saves no time, since it still reads all
-  of silver; it pays once silver is read incrementally too and the fact is large, or when
-  each write costs money.
+  `event_id`), and a post-hook deletes the ids silver no longer has. Like silver's refusal of
+  an empty bronze, that delete does nothing when `int_earthquakes` is empty, so `dbt run
+  --empty` (which leaves the views empty) can't wipe the table; the limit is that an event
+  can't leave a silver that has none left. The tests check that an incremental run equals a
+  full refresh after a revision, a rename, a merge, a new event, a USGS change that leaves
+  `updated` alone and a revised BMKG-only event (which has no `updated`), and that `--empty`
+  and the run after it leave the table alone; so did a real fetch (above, with no event
+  leaving silver). At 27,000 rows it saves no time, since it still reads all of silver; it
+  pays once silver is read incrementally too and the fact is large, or when each write costs
+  money.
 - **The province table is read in place.** `stg_reference__provinces` reads
   `src/quake_lake/provinces.csv`, the file silver uses, as a dbt source, so the two can't
   drift apart; the regions come from a separate seed, and a `not_null` test on
