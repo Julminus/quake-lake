@@ -10,11 +10,11 @@ sources:
           meta:
             external_location: "read_parquet('{{ env_var('SILVER_URI', 'lake/silver') }}/events/*/*/*.parquet', hive_partitioning = false)"
           # The newest origin time. From 2015 to 2026 the longest gap between two events in
-          # this box was 49.7 hours, so 3 days (that gap plus a daily fetch's lag) without
-          # one means ingestion has stopped, not that the earth went quiet.
+          # this box was 49.7 hours; with a daily fetch's lag on top that is 73.7, so 4 days
+          # without one means ingestion has stopped, not that the earth went quiet.
           loaded_at_field: '"time"'
           freshness:
-            warn_after: {count: 3, period: day}
+            warn_after: {count: 4, period: day}
             error_after: {count: 7, period: day}
         columns:
           - name: event_id
