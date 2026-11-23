@@ -15,3 +15,6 @@ build
 # local-only Claude Code files (see .git/info/exclude)
 .claude
 CLAUDE.md
+transform/target
+transform/logs
+.scratch
