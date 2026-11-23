@@ -66,6 +66,35 @@ jobs:
       - name: storage against a real MinIO
         run: uv run pytest -m minio -v
 
+  airflow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: build the Airflow image (compose.yaml)
+        run: docker compose build airflow-cli
+      - name: DAG tests, in the Airflow image
+        run: >-
+          docker compose run --rm --no-deps -v "$PWD:/repo:ro" -w /repo --entrypoint bash airflow-cli
+          -c "pip install --quiet --no-cache-dir pytest==9.2.0 && python -m pytest -p no:cacheprovider -v tests/test_dag.py"
+      - name: the DAG's tasks on a recorded day, on MinIO (no network)
+        run: |
+          docker compose run --rm createbucket
+          docker compose run --rm -v "$PWD/tests/fixtures:/fixtures:ro" --entrypoint mc createbucket cp --quiet \
+            /fixtures/usgs-palu-2018-09-28.json \
+            "local/lake/bronze/source=usgs/ingest_date=2026-11-20/20180928T000000Z_20180929T000000Z.json"
+          # `airflow tasks test` exits 0 when the task fails, so each step reads the log.
+          # (`airflow dags test` can't run a DAG with a deadline in 3.3.2: apache/airflow#73428.)
+          for t in silver gold freshness; do docker compose run --rm airflow-cli tasks test quake_lake $t > $t.txt 2>&1; done
+          grep "wrote 81 events in 1 monthly partition to s3://lake/silver/" silver.txt
+          if grep "Task failed" silver.txt gold.txt; then exit 1; fi
+          grep -E "Done\. PASS=[0-9]+ WARN=0 ERROR=0 SKIP=0" gold.txt
+          # Gold holds the events dbt read from MinIO through DuckDB's httpfs.
+          docker compose run --rm --entrypoint /app/.venv/bin/python airflow-cli -c \
+            "import duckdb; n = duckdb.connect('/app/lake/gold.duckdb', read_only=True).execute('select count(*) from fct_earthquakes').fetchone()[0]; print(n); assert n == 81"
+          # The recorded day is from 2018: freshness must fail the task.
+          grep "ERROR STALE freshness of silver.events" freshness.txt
+          grep "Task failed" freshness.txt
+
   docker:
     runs-on: ubuntu-latest
     steps:
