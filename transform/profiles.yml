@@ -7,3 +7,20 @@ quake_lake:
       threads: 4
       settings:
         TimeZone: UTC
+    # Silver on the MinIO from compose.yaml (DBT_TARGET=minio, as the Airflow services
+    # set it), read through DuckDB's httpfs with the variables the CLI uses.
+    minio:
+      type: duckdb
+      path: "{{ env_var('GOLD_DB', 'lake/gold.duckdb') }}"
+      threads: 4
+      extensions: [httpfs]
+      settings:
+        TimeZone: UTC
+      secrets:
+        - type: s3
+          key_id: "{{ env_var('AWS_ACCESS_KEY_ID') }}"
+          secret: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
+          region: "{{ env_var('AWS_REGION', 'us-east-1') }}"
+          endpoint: "{{ env_var('AWS_ENDPOINT_URL_S3') | replace('http://', '') }}"
+          url_style: path
+          use_ssl: false
