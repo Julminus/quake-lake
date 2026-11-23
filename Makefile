@@ -2,13 +2,14 @@
 # and cmd.exe (GNU make on Windows without Git Bash on PATH).
 
 # The CLI writes to $BRONZE_URI when it is set, else to lake/bronze; silver to
-# $SILVER_URI, else lake/silver. dbt reads silver from there (a local folder only, for
-# now: not s3://) and builds gold into $GOLD_DB, else lake/gold.duckdb.
+# $SILVER_URI, else lake/silver. dbt reads silver from there and builds gold into
+# $GOLD_DB, else lake/gold.duckdb: here a local folder (dbt's `local` target); s3:// silver
+# is read by the `minio` target, which the Airflow stack (make airflow) uses.
 SINCE ?= 2015-01-01
 export DBT_PROJECT_DIR := transform
 export DBT_PROFILES_DIR := transform
 
-.PHONY: help setup lint format typecheck test run backfill silver gold freshness docs minio minio-run docker clean
+.PHONY: help setup lint format typecheck test run backfill silver gold freshness docs minio minio-run airflow docker clean
 
 help:
 	@echo "setup      install deps (+ pre-commit hooks once .pre-commit-config.yaml exists)"
@@ -23,7 +24,8 @@ help:
 	@echo "freshness  dbt source freshness: is the newest event in silver recent?"
 	@echo "docs       dbt docs generate, then open transform/target/static_index.html"
 	@echo "minio      start MinIO (127.0.0.1:9000) and create the 'lake' bucket"
-	@echo "minio-run  the same as run, inside a container, into s3://lake/ on MinIO"
+	@echo "minio-run  bronze and silver as in run, inside a container, into s3://lake/ on MinIO"
+	@echo "airflow    MinIO + Airflow (http://127.0.0.1:8080); the daily DAG runs the whole pipeline"
 	@echo "docker     build the CLI image"
 
 setup:
@@ -73,6 +75,9 @@ minio-run:
 	docker compose run --rm --build ingest bmkg
 	docker compose run --rm ingest usgs
 	docker compose run --rm ingest silver
+
+airflow:
+	docker compose up -d --wait --build
 
 docker:
 	docker build -t quake-lake:dev .

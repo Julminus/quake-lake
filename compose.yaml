@@ -1,17 +1,60 @@
-# Local stand-in for S3 (MinIO), and the CLI as a one-off container.
+# MinIO (a local stand-in for S3), Airflow running the daily pipeline into it, and the
+# CLI as a one-off container.
 #
-#   docker compose up -d minio               S3 API on 127.0.0.1:9000, console on :9001
+#   docker compose up -d                     MinIO + Airflow; the quake_lake DAG starts
+#                                            at once (UI on http://127.0.0.1:8080)
+#   docker compose up -d --wait minio        only MinIO: S3 API on 127.0.0.1:9000, console on :9001
 #   docker compose run --rm ingest bmkg      snapshot BMKG into s3://lake/bronze
 #   docker compose run --rm ingest usgs --since 2015-01-01
 #   docker compose run --rm ingest silver    rebuild s3://lake/silver from bronze
+#   docker compose run --rm airflow-cli dags list-runs quake_lake
 #
 # Ports bind to 127.0.0.1 only. The credentials are local-only defaults; set
-# MINIO_ROOT_USER / MINIO_ROOT_PASSWORD in a .env file to use your own.
+# MINIO_ROOT_USER / MINIO_ROOT_PASSWORD (and AIRFLOW_JWT_SECRET) in a .env file to use your own.
 name: quake-lake
 
 x-minio-credentials:
   user: &minio-user ${MINIO_ROOT_USER:-quakelake}
   password: &minio-password ${MINIO_ROOT_PASSWORD:-quakelake-local}
+
+# Where the pipeline reads and writes, for the CLI container and Airflow's tasks alike.
+x-lake-env: &lake-env
+  BRONZE_URI: s3://lake/bronze
+  SILVER_URI: s3://lake/silver
+  AWS_ENDPOINT_URL_S3: http://minio:9000
+  AWS_ACCESS_KEY_ID: *minio-user
+  AWS_SECRET_ACCESS_KEY: *minio-password
+  AWS_REGION: us-east-1
+  DBT_TARGET: minio
+
+x-airflow: &airflow
+  build:
+    context: .
+    target: airflow
+  image: quake-lake-airflow:dev
+  environment: &airflow-env
+    <<: *lake-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:-quake-lake-local}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    # No login: the UI and API listen on 127.0.0.1 only, and everyone is an admin.
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+    QUAKE_LAKE_START_DATE: ${QUAKE_LAKE_START_DATE:-}
+  volumes:
+    - ./dags:/opt/airflow/dags:ro
+    - ./plugins:/opt/airflow/plugins:ro
+    - airflow-logs:/opt/airflow/logs
+    - gold-data:/app/lake
+  depends_on: &airflow-depends-on
+    postgres:
+      condition: service_healthy
+    createbucket:
+      condition: service_completed_successfully
+    airflow-init:
+      condition: service_completed_successfully
 
 services:
   minio:
@@ -54,16 +97,63 @@ services:
     build: .
     image: quake-lake:dev
     profiles: [tools]
-    environment:
-      BRONZE_URI: s3://lake/bronze
-      SILVER_URI: s3://lake/silver
-      AWS_ENDPOINT_URL_S3: http://minio:9000
-      AWS_ACCESS_KEY_ID: *minio-user
-      AWS_SECRET_ACCESS_KEY: *minio-password
-      AWS_REGION: us-east-1
+    environment: *lake-env
     depends_on:
       createbucket:
         condition: service_completed_successfully
 
+  # Airflow's metadata database. No port on the host.
+  postgres:
+    image: postgres:16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  airflow-init:
+    <<: *airflow
+    command: db migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  airflow-apiserver:
+    <<: *airflow
+    command: api-server
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  # With the LocalExecutor, the scheduler runs the tasks itself, as subprocesses.
+  airflow-scheduler:
+    <<: *airflow
+    command: scheduler
+    restart: unless-stopped
+
+  airflow-dag-processor:
+    <<: *airflow
+    command: dag-processor
+    restart: unless-stopped
+
+  airflow-cli:
+    <<: *airflow
+    profiles: [tools]
+    command: version
+
 volumes:
   minio-data:
+  postgres-data:
+  airflow-logs:
+  gold-data:
