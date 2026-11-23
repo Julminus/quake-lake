@@ -1,0 +1,6 @@
+# The quake_lake DAG's deadline alert, fired on purpose (S10, 2026-11-23 UTC).
+# dags/quake_lake_daily.py was edited by hand to interval=timedelta(seconds=1) (the committed
+# value is 1 hour), then a manual run was triggered through the REST API. The run took 9.6 s;
+# its deadline was 1 s after it was queued at 18:34:06.03. Lines from docker compose logs airflow-scheduler:
+2026-11-23 18:34:10.006555+00:00 [error    ] quake_lake run manual__2026-11-23T18:34:06.026733+00:00 missed its deadline of 2026-11-23 18:34:07.032083+00:00 (state: running) [quake_lake_alerts] loc=quake_lake_alerts.py:19
+2026-11-23 18:34:10.006786+00:00 [info     ] Callback executed successfully [callback_runner] callback_path=quake_lake_alerts.missed_deadline loc=callback_supervisor.py:163

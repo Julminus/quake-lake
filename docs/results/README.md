@@ -1,4 +1,4 @@
-# Measured results (S7 2026-11-20, S8 2026-11-21, S9 2026-11-22)
+# Measured results (S7 2026-11-20, S8 2026-11-21, S9 2026-11-22, S10 2026-11-23)
 
 Everything was measured on one PC: Windows 11, Ryzen 7 9800X3D, a home connection in
 Indonesia, Docker 29.9.3. The README quotes these files.
@@ -10,6 +10,8 @@ Indonesia, Docker 29.9.3. The README quotes these files.
 | `backfill-s7-before-gzip.json` | The first backfill, before `fetch()` asked for gzip | the script as of commit `1a8613f`, which did not yet time storage writes (no `storage_put_seconds_total`) |
 | `silver-s8.json` | Silver built from the local bronze: the S7 backfill plus a 30-day USGS look-back and one BMKG snapshot, both fetched at 18:05 UTC on 2026-11-21 (147 objects). Counts, three timed builds and whether they were byte-identical, every BMKG-USGS match with its time and distance, pairs of distinct USGS events within the match tolerance, provinces, and the province step scored against polygons | `uv run quake-lake bmkg` and `uv run quake-lake usgs --days 30` on top of the S7 backfill, then `uv run --with shapely python scripts/measure_silver.py --polygons geoBoundaries-IDN-ADM1_simplified.geojson` (the polygons: geoBoundaries' gbHumanitarian IDN ADM1, simplified, commit `9469f09`, 6.6 MB, not in the repo; https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbHumanitarian/IDN/ADM1/geoBoundaries-IDN-ADM1_simplified.geojson). It also compares the BMKG events in bronze with the recorded fixtures in `tests/fixtures/` |
 | `gold-s9.json` | Gold built with dbt from a silver of the same 147 bronze objects as `silver-s8.json`: the dbt nodes and their results, three timed full builds, the mart counts, source freshness, and an incremental run of `fct_earthquakes` after a real fetch (a BMKG snapshot and the 7-day USGS look-back at 18:58 UTC on 2026-11-22), compared with a full refresh | `uv run python scripts/measure_gold.py --bronze lake/bronze` (silver and gold go to a temporary folder; only the fetch writes to the bronze) |
+| `airflow-s10.json` | The compose stack from empty volumes: image sizes, `docker compose up -d --wait`, the four catch-up runs from 2026-11-20 with every task's state, try and duration (Airflow's REST API), memory idle and during a run, a manual run over the whole local bronze copied into MinIO, a run with MinIO stopped as it started (then started again once a task was waiting for its retry), and the four marts compared with silver and gold rebuilt outside Docker from a copy of MinIO's bronze. Measured 18:45 to 18:50 UTC on 2026-11-23 | `uv run python scripts/measure_airflow.py --bronze lake/bronze` (deletes the stack's volumes first; `--start` defaults to 3 days before today, UTC) |
+| `deadline-s10.log` | The deadline alert firing: the scheduler's two log lines for a manual run whose deadline was set to 1 s after it was queued | by hand: `interval=timedelta(seconds=1)` in `dags/quake_lake_daily.py` (the committed value is 1 hour), a run triggered through the REST API, `docker compose logs airflow-scheduler`; the file's header says which lines |
 | `lambda-s7.log` | Three cold starts of the handler in `public.ecr.aws/lambda/python:3.12` under its local emulator, one live invocation each (`{"days": 2}`: three BMKG feeds and two days of USGS), with the emulator's raw `INIT REPORT` / `REPORT` lines and the handler's log | `docker run` with `src/` mounted at `/var/task`, then a `curl` to the invocation URL, as in the CI `docker` job |
 
 ## Measured by hand (no file)
@@ -42,6 +44,15 @@ Indonesia, Docker 29.9.3. The README quotes these files.
   (`largest_around_the_busiest_day`). Query: `select regexp_extract(place, 'of (.*),', 1),
   province_code, count(*), min(latitude), max(latitude) from fct_earthquakes where
   in_indonesia and origin_date_utc = '2026-04-02' group by all`.
+- **Test suite, S10:** `uv run pytest -q`, three runs with the Docker stack stopped: 12.56,
+  12.62 and 12.80 s, 186 passed and 10 skipped on Windows (the 7 Airflow DAG tests, the
+  Linux-only concurrency test and the two MinIO ones). In the Airflow image the DAG test file
+  (9 tests) takes about 3 s.
+- **The Airflow image's size:** `docker images` reports 3.17 GB for `quake-lake-airflow:dev`
+  and 1.11 GB for `apache/airflow:slim-3.3.2-python3.12`. The pipeline's virtualenv is 731 MB
+  (`du -sh /app/.venv`, the same as in the CLI image), and its layer shows as 1.48 GB in
+  `docker history`, twice `du`'s figure; so compare Docker's sizes with each other (S9's
+  1,183 MB for the CLI image was read the same way), not with `du`.
 - **Test suite, S9:** `uv run pytest -q`, three runs: 12.7 to 14.1 s, 184 passed and 3
   skipped on Windows (the Linux-only concurrency test and the two MinIO ones); after the
   review rounds added dbt runs to them, 12.7 to 12.8 s, of which the 4 dbt tests take about
