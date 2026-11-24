@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 import duckdb
@@ -13,7 +14,7 @@ from dbt.cli.main import dbtRunner
 from conftest import fixture
 from quake_lake.silver import build_silver
 from quake_lake.storage import LocalStorage
-from test_silver import bmkg, feature, gempa, usgs
+from test_silver import T0, bmkg, feature, gempa, usgs
 
 ROOT = Path(__file__).parent.parent
 PROJECT = ROOT / "transform"
@@ -101,16 +102,22 @@ def test_gold_builds_from_the_recorded_feeds(lake):
         k: (len(v), max(m for m, _, _ in v), min(t for *_, t in v), max(t for *_, t in v))
         for k, v in groups.items()
     }
-    depths = {k: sum(d for _, d, _ in v) / len(v) for k, v in groups.items()}
+    # The exact mean, rounded half away from zero as SQL rounds.
+    depths = {
+        k: float(
+            (sum(Decimal(repr(d)) for _, d, _ in v) / len(v)).quantize(
+                Decimal("0.1"), ROUND_HALF_UP
+            )
+        )
+        for k, v in groups.items()
+    }
     rows = query(
         lake,
         "select province_code, magnitude_class, earthquakes, max_magnitude, first_utc, last_utc,"
         " mean_depth_km from agg_province_magnitude",
     )
     assert {(p, c): (n, mx, first, last) for p, c, n, mx, first, last, _ in rows} == expected
-    for p, c, *_, depth in rows:  # SQL rounds half away from zero, Python to even
-        assert depth == pytest.approx(depths[p, c], abs=0.051)
-        assert depth == round(depth, 1)
+    assert {(p, c): depth for p, c, *_, depth in rows} == depths
     assert max(len(v) for v in groups.values()) > 1
     # Every day from 2018-09-28 to the last BMKG event, quiet ones as 0.
     days = (datetime(2026, 11, 20) - datetime(2018, 9, 28)).days + 1
@@ -131,6 +138,24 @@ def test_a_usgs_region_missing_from_the_seed_warns(lake):
     assert query(lake, "select place_region, in_indonesia from fct_earthquakes") == [
         ("Solomon Islands", True)
     ]
+
+
+def test_the_mean_depth_is_exact_whatever_the_row_order(lake):
+    # Papua Barat Daya's 7 minor earthquakes in the real data: their mean depth is 27.35
+    # exactly. Summed as floats it was 27.3 in a full build and 27.4 in an incremental one.
+    depths = [38.8, 39.01, 39.51, 15.04, 10.0, 39.09, 10.0]
+    near_sorong = [
+        feature(f"us{i}", T0 + timedelta(hours=i), -0.9, 131.3, d, 3.5, place="Sorong, Indonesia")
+        for i, d in enumerate(depths)
+    ]
+    silver(lake, {USGS_KEY: usgs(*near_sorong)})
+
+    assert dbt(lake, "build").success
+    assert query(
+        lake,
+        "select province_code, magnitude_class, earthquakes, mean_depth_km"
+        " from agg_province_magnitude",
+    ) == [("ID-PD", "minor", 7, 27.4)]
 
 
 def fct(lake: Path) -> list[tuple]:
