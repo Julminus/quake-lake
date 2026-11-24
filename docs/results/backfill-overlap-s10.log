@@ -1,0 +1,18 @@
+# Two 2-day backfills of the quake_lake DAG, without and with --max-active-runs (S10, 2026-11-24 UTC).
+# On the compose stack after airflow-s10.json's measurement, with commit e8d994c's DAG:
+#   docker compose run --rm airflow-cli backfill create --dag-id quake_lake --from-date 2026-11-13 --to-date 2026-11-14
+#   docker compose run --rm airflow-cli backfill create --dag-id quake_lake --from-date 2026-11-11 --to-date 2026-11-12 --max-active-runs 1
+# Run times from the REST API (dagRuns), task lines from each task's attempt-1 log (taskInstances/<task>/logs/1).
+
+## Without --max-active-runs (the backfill's limit is then Airflow's default, 10)
+backfill__2026-11-13T00:00:00+00:00  success  21:24:49 to 21:25:02  silver try 1, gold try 1
+backfill__2026-11-14T00:00:00+00:00  success  21:24:49 to 21:27:05  silver try 1, gold try 2
+2026-11-13 silver attempt 1  21:24:57.126  wrote 26,801 events in 143 monthly partitions to s3://lake/silver/ in 2.6 s
+2026-11-14 silver attempt 1  21:24:57.115  wrote 26,801 events in 143 monthly partitions to s3://lake/silver/ in 2.6 s
+2026-11-13 gold attempt 1    21:25:02.410  Done. PASS=52 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=52
+2026-11-14 gold attempt 1    21:25:01.147  IO Error: Could not set lock on file "/app/lake/gold.duckdb": Conflicting lock is held in /usr/python/bin/python3.12 (PID 142).
+2026-11-14 gold attempt 1    21:25:01.304  Command exited with return code 2
+
+## With --max-active-runs 1
+backfill__2026-11-11T00:00:00+00:00  success  21:37:25 to 21:37:34  silver try 1, gold try 1
+backfill__2026-11-12T00:00:00+00:00  success  21:37:35 to 21:37:43  silver try 1, gold try 1

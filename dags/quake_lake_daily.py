@@ -41,8 +41,9 @@ with DAG(
     start_date=start.astimezone(UTC) if start.tzinfo else start.replace(tzinfo=UTC),
     catchup=True,
     # Silver is rebuilt from all of bronze and gold is one DuckDB file: one run at a time.
-    # Airflow counts a backfill's runs against the backfill's own limit, not this one, so
-    # a backfill can overlap a scheduled or manual run (see the README).
+    # Airflow counts a backfill's runs against the backfill's own limit, not this one (10
+    # unless `backfill create --max-active-runs 1`), so a backfill can overlap a scheduled
+    # or manual run, and its own runs each other (see the README).
     max_active_runs=1,
     default_args={
         "retries": 2,
@@ -64,8 +65,8 @@ with DAG(
     bmkg = BashOperator(task_id="bmkg", bash_command=f"{QUAKE_LAKE} bmkg")
     # The run's date: its logical date (00:00 UTC for a scheduled or backfill run, the time
     # asked for in a manual one), else, for a manual run without one, when it was triggered.
-    # A manual run's logical date can't be a day's 00:00 (the scheduled run has it; clear
-    # that run to redo the day) or before the start date (Airflow creates no tasks then).
+    # A manual run's logical date can't be the 00:00 of a day that has a run (clear that
+    # run to redo the day), and before the start date Airflow creates no tasks.
     usgs = BashOperator(
         task_id="usgs",
         bash_command=f"{QUAKE_LAKE} usgs"

@@ -499,8 +499,9 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   run isn't refilled), and since each run fetches the 7 days before its date, a USGS gap
   of any length closes run by run (BMKG events that scrolled off its feeds meanwhile are
   gone). Airflow's own backfill (`docker compose run --rm airflow-cli backfill create
-  --dag-id quake_lake --from-date ... --to-date ...`) runs any past days the same way,
-  measured above. To redo a day that has a run, clear that run; a run triggered for a
+  --dag-id quake_lake --from-date ... --to-date ... --max-active-runs 1`) runs any past
+  days the same way, measured above; `--max-active-runs 1` matters, see the next point.
+  To redo a day that has a run, clear that run; a run triggered for a
   past time fetches the week before that time, not before the moment it was triggered,
   but before the start date Airflow creates no tasks and marks the empty run a success.
   Neither is how to
@@ -512,10 +513,15 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   setting it, the more catch-up runs there are (one per day, about 10 s each).
 - **One run at a time.** Silver is rebuilt from all of bronze and gold is one DuckDB file,
   so two runs at once would race; `max_active_runs=1` queues them. The limit: Airflow 3
-  counts a backfill's runs against the backfill's own `max_active_runs`, so a backfill can
-  overlap the 00:00 run or a manual one (then two `dbt build`s can't both open the DuckDB
-  file, and the second fails and retries). Start backfills away from midnight UTC; a
-  one-slot pool on silver, gold and freshness is the fix if that's not enough.
+  counts a backfill's runs against the backfill's own `max_active_runs`, which is 10
+  unless `--max-active-runs` says otherwise. Without it, a 2-day backfill here started
+  both runs at once, and the second's `gold` failed on DuckDB's file lock (one process
+  writes a DuckDB file at a time) and succeeded on its retry 2 minutes later
+  ([`backfill-overlap-s10.log`](docs/results/backfill-overlap-s10.log)). With
+  `--max-active-runs 1` the backfill's runs queue, but they can still overlap the 00:00
+  run or a manual one, so start backfills away from midnight UTC; a one-slot pool on
+  silver, gold and freshness is the fix if that's not enough. Airflow refuses a second
+  backfill of the DAG until the first is marked complete.
 - **The data-quality checks are dbt's, in two places.** `dbt build` runs the 41 data tests
   between the models, so a failing test stops the marts downstream of it from being
   replaced (a `dbt run` followed by `dbt test` would publish first and check after); then
