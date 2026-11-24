@@ -70,6 +70,8 @@ services:
       - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
+    # Like Airflow's services: back after a crash or a Docker restart, or the DAG can't run.
+    restart: unless-stopped
     healthcheck:
       # The image has bash but no curl: ask the liveness endpoint over /dev/tcp.
       test:
@@ -111,6 +113,7 @@ services:
       POSTGRES_DB: airflow
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 2s
@@ -136,10 +139,15 @@ services:
       retries: 30
     restart: unless-stopped
 
-  # With the LocalExecutor, the scheduler runs the tasks itself, as subprocesses.
+  # With the LocalExecutor, the scheduler runs the tasks itself, as subprocesses. They talk
+  # to the API server, so a task started before it is up fails and spends a retry.
   airflow-scheduler:
     <<: *airflow
     command: scheduler
+    depends_on:
+      <<: *airflow-depends-on
+      airflow-apiserver:
+        condition: service_healthy
     restart: unless-stopped
 
   airflow-dag-processor:
