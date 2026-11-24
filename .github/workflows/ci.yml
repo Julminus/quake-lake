@@ -73,10 +73,16 @@ jobs:
       - name: build the Airflow image (compose.yaml)
         run: docker compose build airflow-cli
       - name: DAG tests, in the Airflow image
+        # QUAKE_LAKE_AIRFLOW=1: a broken Airflow import fails the tests instead of skipping them.
         run: >-
-          docker compose run --rm --no-deps -v "$PWD:/repo:ro" -w /repo --entrypoint bash airflow-cli
+          docker compose run --rm --no-deps -e QUAKE_LAKE_AIRFLOW=1 -v "$PWD:/repo:ro" -w /repo
+          --entrypoint bash airflow-cli
           -c "pip install --quiet --no-cache-dir pytest==9.2.0 && python -m pytest -p no:cacheprovider -v tests/test_dag.py"
-      - name: the DAG's tasks on a recorded day, on MinIO (no network)
+      - name: httpfs is in the image (dbt mustn't need the network to read S3)
+        run: >-
+          docker run --rm --network none --entrypoint /app/.venv/bin/python quake-lake-airflow:dev
+          -c "import duckdb; duckdb.sql('LOAD httpfs')"
+      - name: the DAG's tasks on a recorded day, on MinIO (nothing fetched)
         run: |
           docker compose run --rm createbucket
           docker compose run --rm -v "$PWD/tests/fixtures:/fixtures:ro" --entrypoint mc createbucket cp --quiet \
@@ -84,16 +90,19 @@ jobs:
             "local/lake/bronze/source=usgs/ingest_date=2026-11-20/20180928T000000Z_20180929T000000Z.json"
           # `airflow tasks test` exits 0 when the task fails, so each step reads the log.
           # (`airflow dags test` can't run a DAG with a deadline in 3.3.2: apache/airflow#73428.)
-          for t in silver gold freshness; do docker compose run --rm airflow-cli tasks test quake_lake $t > $t.txt 2>&1; done
-          grep "wrote 81 events in 1 monthly partition to s3://lake/silver/" silver.txt
-          if grep "Task failed" silver.txt gold.txt; then exit 1; fi
-          grep -E "Done\. PASS=[0-9]+ WARN=0 ERROR=0 SKIP=0" gold.txt
+          # One container for all three: every `compose run` with deps re-runs airflow-init.
+          mkdir -m 777 out
+          docker compose run --rm -v "$PWD/out:/out" --entrypoint bash airflow-cli -c \
+            'for t in silver gold freshness; do airflow tasks test quake_lake $t > /out/$t.txt 2>&1; done'
+          grep "wrote 81 events in 1 monthly partition to s3://lake/silver/" out/silver.txt
+          if grep "Task failed" out/silver.txt out/gold.txt; then exit 1; fi
+          grep -E "Done\. PASS=[0-9]+ WARN=0 ERROR=0 SKIP=0" out/gold.txt
           # Gold holds the events dbt read from MinIO through DuckDB's httpfs.
-          docker compose run --rm --entrypoint /app/.venv/bin/python airflow-cli -c \
+          docker compose run --rm --no-deps --entrypoint /app/.venv/bin/python airflow-cli -c \
             "import duckdb; n = duckdb.connect('/app/lake/gold.duckdb', read_only=True).execute('select count(*) from fct_earthquakes').fetchone()[0]; print(n); assert n == 81"
           # The recorded day is from 2018: freshness must fail the task.
-          grep "ERROR STALE freshness of silver.events" freshness.txt
-          grep "Task failed" freshness.txt
+          grep "ERROR STALE freshness of silver.events" out/freshness.txt
+          grep "Task failed" out/freshness.txt
 
   docker:
     runs-on: ubuntu-latest
