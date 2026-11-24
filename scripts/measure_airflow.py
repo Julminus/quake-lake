@@ -1,13 +1,14 @@
 """Measure the compose stack (MinIO + Airflow) end to end; write docs/results/airflow-s10.json.
 
-    uv run python scripts/measure_airflow.py --bronze lake/bronze
+    uv run python scripts/measure_airflow.py --bronze lake/bronze --yes
 
 Deletes the stack's volumes first (`docker compose down -v`: MinIO's bronze and silver,
 Airflow's database and logs, gold), times `docker compose up -d --wait`, and waits for the
-catch-up runs from --start. Then copies --bronze into MinIO and triggers a run over the
-whole history, stops MinIO during another run to watch the retries, and finally rebuilds
-silver and gold locally from a copy of MinIO's bronze to compare every mart with the gold
-Airflow built. Network: the DAG's BMKG and USGS fetches. --bronze is only read.
+catch-up runs from --start. Then backfills the 3 days before --start with Airflow's own
+backfill, copies --bronze into MinIO and triggers a run over the whole history, stops
+MinIO during another run to watch the retries, and finally rebuilds silver and gold
+locally from a copy of MinIO's bronze to compare every mart with the gold Airflow built.
+Network: the DAG's BMKG and USGS fetches. --bronze is only read.
 """
 
 from __future__ import annotations
@@ -43,7 +44,14 @@ def main() -> None:
     three_days_ago = (datetime.now(UTC) - timedelta(days=3)).date()
     p.add_argument("--start", type=date.fromisoformat, default=three_days_ago)
     p.add_argument("--out", default="docs/results/airflow-s10.json")
+    p.add_argument("--yes", action="store_true", help="agree to delete the stack's volumes")
     args = p.parse_args()
+    if not args.yes:
+        # BMKG snapshots in MinIO's bronze can't be fetched again.
+        raise SystemExit(
+            "this deletes the stack's volumes (MinIO's bronze and silver, "
+            "Airflow's database, gold) first; pass --yes to go ahead"
+        )
     bronze, out = Path(args.bronze).resolve(), Path(args.out).resolve()
     os.chdir(ROOT)
     os.environ["QUAKE_LAKE_START_DATE"] = args.start.isoformat()
@@ -57,6 +65,18 @@ def main() -> None:
     catch_up = wait_for(lambda runs: len(runs) >= expected and all_done(runs))
     last_done = max(r["end_date"] for r in catch_up)
     idle = docker_stats()
+
+    first, last = args.start - timedelta(days=3), args.start - timedelta(days=1)
+    api_post(
+        "/backfills",
+        {
+            "dag_id": "quake_lake",
+            "from_date": f"{first}T00:00:00Z",
+            "to_date": f"{last}T00:00:00Z",
+            "max_active_runs": 1,
+        },
+    )
+    backfill = [r for r in wait_for(lambda rs: backfilled(rs, 3)) if r["run_type"] == "backfill"]
 
     mc("mirror", "--quiet", "/host", "local/lake/bronze", mount=bronze, read_only=True)
     with Sampler() as peak:
@@ -92,6 +112,10 @@ def main() -> None:
             "runs_detail": [run_record(r) for r in catch_up],
         },
         "memory_mib_idle": idle,
+        "backfill_of_the_3_days_before_start": [
+            {**run_record(r), "logical_date": r["logical_date"], "usgs_command": usgs_command(r)}
+            for r in backfill
+        ],
         "full_history_run": {**run_record(history), "memory_mib_peak": peak.max},
         "retry_run_with_minio_stopped": run_record(retry),
         "local_rebuild_of_the_same_bronze": {
@@ -117,11 +141,27 @@ def mc(*args: str, mount: Path, read_only: bool = False) -> None:
     compose("run", "--rm", "-v", volume, "--entrypoint", "mc", "createbucket", *args)
 
 
-def api(path: str = "", body: dict | None = None) -> dict:
+def api(path: str = "", body: dict | None = None, base: str = API) -> dict:
     data = None if body is None else json.dumps(body).encode()
-    req = Request(API + path, data=data, headers={"Content-Type": "application/json"})
+    req = Request(base + path, data=data, headers={"Content-Type": "application/json"})
     with urlopen(req, timeout=30) as r:
         return json.load(r)
+
+
+def api_post(path: str, body: dict) -> dict:
+    """POST to the API root (backfills aren't under /dags/quake_lake)."""
+    return api(path, body, base=API.removesuffix("/dags/quake_lake"))
+
+
+def backfilled(rs: list[dict], n: int) -> bool:
+    done_backfills = [r for r in rs if r["run_type"] == "backfill" and r["state"] in DONE]
+    return len(done_backfills) == n
+
+
+def usgs_command(run: dict) -> str:
+    """The usgs task's command as Airflow rendered it for this run."""
+    ti = api(f"/dagRuns/{quote(run['dag_run_id'])}/taskInstances/usgs")
+    return ti["rendered_fields"]["bash_command"]
 
 
 def runs() -> list[dict]:

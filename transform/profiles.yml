@@ -8,7 +8,8 @@ quake_lake:
       settings:
         TimeZone: UTC
     # Silver on the MinIO from compose.yaml (DBT_TARGET=minio, as the Airflow services
-    # set it), read through DuckDB's httpfs with the variables the CLI uses.
+    # set it), read through DuckDB's httpfs with the variables the CLI uses. The endpoint
+    # must be plain http://host:port, as compose sets it (boto3 takes more forms).
     minio:
       type: duckdb
       path: "{{ env_var('GOLD_DB', 'lake/gold.duckdb') }}"
