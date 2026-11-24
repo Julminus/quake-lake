@@ -65,7 +65,11 @@ Indonesia, Docker 29.9.3. The README quotes these files.
   built in one go, the other over 9 incremental runs), not threading. On the local build it
   disagreed with the exact mean in 2 of 124 groups (5 groups' means end in exactly 5). The
   decimal version agrees with the exact mean in all 124 on both, and the final measurement
-  found 0 differing rows.
+  found 0 differing rows. The next review showed that `avg()` of decimals still returns a
+  double, so an exact tie such as 100.05 (stored as 100.0499...) could still round down;
+  none of the 124 real groups was one. Casting the mean back to `decimal(38, 10)` before
+  rounding (the `fix(gold)` commit after `598f768`) rounds it up, which a test checks, and
+  gives the same 124 values on the real data as before.
 - **Docker's VM:** `docker info` and `docker stats` report 9.7 GiB of memory (9.713 GiB), set
   by `~/.wslconfig` on this PC.
 - **Test suite, S10:** `uv run pytest -q`, three runs with the Docker stack stopped: 14.49,
