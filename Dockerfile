@@ -13,9 +13,10 @@ RUN uv sync --locked --no-dev --no-install-project
 COPY src ./src
 RUN uv sync --locked --no-dev --no-editable
 
-# Airflow (the slim image: core and the standard provider) and the pipeline in a
-# virtualenv of its own, /app/.venv, built against this image's Python, so Airflow's
-# pinned dependencies and dbt's never have to agree. Tasks call /app/.venv/bin/... .
+# Airflow (the slim image: core and the five providers it requires, standard among them)
+# and the pipeline in a virtualenv of its own, /app/.venv, built against this image's
+# Python, so Airflow's pinned dependencies and dbt's never have to agree. Tasks call
+# /app/.venv/bin/... .
 FROM apache/airflow:slim-3.3.2-python3.12@sha256:a54e7bd6c4d7a17e55cd14b0ead257877b8f8111680d2692cbdba2ff32bd3ff3 AS airflow
 # The metadata database is Postgres; the slim image has no drivers for it (Airflow 3
 # uses psycopg2 and asyncpg). These are the versions Airflow 3.3.2's constraints pin.
@@ -24,14 +25,18 @@ USER root
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
-# uv is mounted for the build, not copied into the image.
+# uv is mounted for the build, not copied into the image, and so is its download cache
+# (the base image puts UV_CACHE_DIR in /tmp/.cache/uv: 689 MB that would ship otherwise).
 RUN --mount=from=ghcr.io/astral-sh/uv:0.13.8,source=/uv,target=/bin/uv \
+    --mount=type=cache,target=/tmp/.cache/uv \
     uv sync --locked --no-dev --no-install-project --python /usr/python/bin/python3.12
 COPY src ./src
 RUN --mount=from=ghcr.io/astral-sh/uv:0.13.8,source=/uv,target=/bin/uv \
+    --mount=type=cache,target=/tmp/.cache/uv \
     uv sync --locked --no-dev --no-editable --python /usr/python/bin/python3.12
 # dbt runs from /app, so the relative paths in transform/ (src/quake_lake/provinces.csv,
-# lake/gold.duckdb) resolve as they do in a checkout; it writes target/ and logs/ there.
+# lake/gold.duckdb) resolve as they do in a checkout; it writes target/ and logs/ in
+# transform/.
 COPY --chown=airflow:root transform ./transform
 RUN install -d -o airflow -g root /app/lake
 USER airflow
