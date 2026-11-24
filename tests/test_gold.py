@@ -144,9 +144,9 @@ def test_the_mean_depth_is_exact_whatever_the_row_order(lake):
     # Papua Barat Daya's 7 minor earthquakes in the real data: their mean depth is 27.35
     # exactly. Summed as floats it was 27.3 in a full build and 27.4 in an incremental one.
     # And two light ones at 100.05 km: the double nearest 100.05 is 100.0499... And two
-    # micro ones with mean 27.347, which rounding twice (to 27.35, then 27.4) gets wrong.
+    # micro ones with mean 27.3495, which rounding twice (to 27.35, then 27.4) gets wrong.
     depths = [(3.5, d) for d in (38.8, 39.01, 39.51, 15.04, 10.0, 39.09, 10.0)]
-    depths += [(4.5, 100.05), (4.5, 100.05), (2.5, 27.346), (2.5, 27.348)]
+    depths += [(4.5, 100.05), (4.5, 100.05), (2.5, 27.349), (2.5, 27.35)]
     near_sorong = [
         feature(f"us{i}", T0 + timedelta(hours=i), -0.9, 131.3, d, m, place="Sorong, Indonesia")
         for i, (m, d) in enumerate(depths)
