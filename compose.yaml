@@ -140,7 +140,9 @@ services:
     restart: unless-stopped
 
   # With the LocalExecutor, the scheduler runs the tasks itself, as subprocesses. They talk
-  # to the API server, so a task started before it is up fails and spends a retry.
+  # to the API server, so a task started before it is up fails and spends a retry. The
+  # wait applies to `docker compose up`; after a Docker restart, containers start in no
+  # set order.
   airflow-scheduler:
     <<: *airflow
     command: scheduler

@@ -28,7 +28,7 @@ from quake_lake_alerts import missed_deadline
 QUAKE_LAKE = "/app/.venv/bin/quake-lake"
 DBT = "/app/.venv/bin/dbt"
 # Catch-up creates one run per day from here; each takes about 10 s.
-START = (os.environ.get("QUAKE_LAKE_START_DATE") or "2026-11-20").strip()
+START = (os.environ.get("QUAKE_LAKE_START_DATE") or "").strip() or "2026-11-20"
 try:
     start = datetime.fromisoformat(START)
 except ValueError:
@@ -41,6 +41,8 @@ with DAG(
     start_date=start.astimezone(UTC) if start.tzinfo else start.replace(tzinfo=UTC),
     catchup=True,
     # Silver is rebuilt from all of bronze and gold is one DuckDB file: one run at a time.
+    # Airflow counts a backfill's runs against the backfill's own limit, not this one, so
+    # a backfill can overlap a scheduled or manual run (see the README).
     max_active_runs=1,
     default_args={
         "retries": 2,
@@ -60,8 +62,10 @@ with DAG(
 ):
     latest_only = LatestOnlyOperator(task_id="latest_only")
     bmkg = BashOperator(task_id="bmkg", bash_command=f"{QUAKE_LAKE} bmkg")
-    # The run's date: its logical date (00:00 UTC for a scheduled or backfill run, the date
+    # The run's date: its logical date (00:00 UTC for a scheduled or backfill run, the time
     # asked for in a manual one), else, for a manual run without one, when it was triggered.
+    # A manual run's logical date can't be a day's 00:00 (the scheduled run has it; clear
+    # that run to redo the day) or before the start date (Airflow creates no tasks then).
     usgs = BashOperator(
         task_id="usgs",
         bash_command=f"{QUAKE_LAKE} usgs"

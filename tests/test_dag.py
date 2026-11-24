@@ -95,12 +95,12 @@ def utc(text: str | None) -> datetime | None:
             "2026-11-17T00:00:00+00:00",
             "2026-11-24T00:00:00+00:00",
         ),
-        # A manual run for a past date fetches that date's week, not the week before now.
+        # A manual run for a past time fetches the week before it, not the week before now.
         (
-            "2026-11-01T00:00:00",
-            "2026-11-23T18:26:47",
-            "2026-10-25T00:00:00+00:00",
-            "2026-11-01T00:00:00+00:00",
+            "2026-11-21T12:00:00",
+            "2026-11-24T19:56:11",
+            "2026-11-14T12:00:00+00:00",
+            "2026-11-21T12:00:00+00:00",
         ),
         # A manual run without a logical date: the week before it was triggered.
         (
@@ -120,12 +120,19 @@ def test_usgs_fetches_the_seven_days_before_the_run(dag, logical_date, run_after
     assert command == f"/app/.venv/bin/quake-lake usgs --since {since} --until {until}"
 
 
-@pytest.mark.parametrize("value", [" 2026-11-01 ", "2026-11-01T07:00+07:00"])
-def test_the_start_date_is_midnight_utc(monkeypatch, value):
+@pytest.mark.parametrize(
+    ("value", "start"),
+    [
+        (" 2026-11-01 ", datetime(2026, 11, 1, tzinfo=UTC)),  # a date: 00:00 UTC
+        ("2026-11-01T07:00+07:00", datetime(2026, 11, 1, tzinfo=UTC)),  # converted to UTC
+        ("  ", datetime(2026, 11, 20, tzinfo=UTC)),  # blank: the default
+    ],
+)
+def test_the_start_date_is_read_as_utc(monkeypatch, value, start):
     monkeypatch.setenv("QUAKE_LAKE_START_DATE", value)
     bag = load_dags()
     assert bag.import_errors == {}
-    assert bag.dags["quake_lake"].start_date == datetime(2026, 11, 1, tzinfo=UTC)
+    assert bag.dags["quake_lake"].start_date == start
 
 
 def test_a_bad_start_date_names_the_variable(monkeypatch):
