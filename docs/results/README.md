@@ -72,11 +72,11 @@ Indonesia, Docker 29.9.3. The README quotes these files.
   gives the same 124 values on the real data as before.
 - **Docker's VM:** `docker info` and `docker stats` report 9.7 GiB of memory (9.713 GiB), set
   by `~/.wslconfig` on this PC.
-- **Test suite, S10:** `uv run pytest -q`, three runs with the Docker stack stopped: 14.49,
-  14.58 and 15.10 s, 187 passed and 14 skipped on Windows (the 11 Airflow DAG tests, the
+- **Test suite, S10:** `uv run pytest -q`, three runs with the Docker stack stopped: 14.43,
+  14.44 and 14.47 s, 187 passed and 15 skipped on Windows (the 12 Airflow DAG tests, the
   Linux-only concurrency test and the two MinIO ones); the 5 dbt tests take 10.1 s of it
   (`--durations`). Before the review's fixes: 12.56 to 12.80 s, 186 passed, 10 skipped. In
-  the Airflow image the DAG test file (13 tests) takes about 3 to 4.5 s.
+  the Airflow image the DAG test file (14 tests) takes about 3 to 4.5 s.
 - **The Airflow image's size:** `docker images` reports 2.19 GB for `quake-lake-airflow:dev`
   (2,188,393,915 bytes, `docker image inspect`) and 1.11 GB for
   `apache/airflow:slim-3.3.2-python3.12`. The pipeline's virtualenv is 731 MB (`du -sh

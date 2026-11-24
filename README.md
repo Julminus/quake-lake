@@ -170,9 +170,9 @@ fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
 - **MinIO:** with the image pulled, `docker compose up -d --wait minio` is healthy in 2.3 to
   2.4 s. The CLI's image is 1,183 MB since gold (233 MB with bronze only, 688 MB with
   silver): pyarrow alone is 170 MB, and dbt brings DuckDB (66 MB), Babel (33 MB) and more.
-- **Tests:** 199 offline tests (recorded responses and small built records; one concurrency
+- **Tests:** 200 offline tests (recorded responses and small built records; one concurrency
   test runs on Linux only) at 100% branch coverage of the Python package (CI fails below
-  90%), in 14.5 to 15.1 s (three runs); 5 of them run dbt (about 10 s of that). 11 test the
+  90%), in 14.4 to 14.5 s (three runs); 5 of them run dbt (about 10 s of that). 12 test the
   Airflow DAG and need Airflow, so they skip outside its image and CI runs them inside it.
   Two more run against a real MinIO (a storage round trip and a silver rebuild); CI runs
   them too.
