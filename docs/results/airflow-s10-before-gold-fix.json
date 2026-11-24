@@ -1,0 +1,414 @@
+{
+  "airflow": "3.3.2 (apache/airflow:slim-3.3.2-python3.12), LocalExecutor, Postgres 16",
+  "start_date": "2026-11-21",
+  "images": {
+    "quake-lake-airflow:dev": "2.19GB",
+    "apache/airflow:slim-3.3.2-python3.12": "1.11GB",
+    "quake-lake:dev": "1.18GB"
+  },
+  "compose_up_seconds": 19.3,
+  "catch_up": {
+    "runs": 4,
+    "states": {
+      "success": 4
+    },
+    "seconds_from_up_to_last_run_done": 60.9,
+    "runs_detail": [
+      {
+        "run_id": "scheduled__2026-11-21T00:00:00+00:00",
+        "run_type": "scheduled",
+        "state": "success",
+        "seconds": 9.9,
+        "tasks": {
+          "bmkg": {
+            "state": "skipped",
+            "try_number": 0,
+            "duration": null
+          },
+          "freshness": {
+            "state": "skipped",
+            "try_number": 0,
+            "duration": null
+          },
+          "gold": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 4.1
+          },
+          "latest_only": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 2.07
+          },
+          "silver": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 0.73
+          },
+          "usgs": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 3.29
+          }
+        }
+      },
+      {
+        "run_id": "scheduled__2026-11-22T00:00:00+00:00",
+        "run_type": "scheduled",
+        "state": "success",
+        "seconds": 7.0,
+        "tasks": {
+          "bmkg": {
+            "state": "skipped",
+            "try_number": 0,
+            "duration": null
+          },
+          "freshness": {
+            "state": "skipped",
+            "try_number": 0,
+            "duration": null
+          },
+          "gold": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 3.07
+          },
+          "latest_only": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 0.07
+          },
+          "silver": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 0.69
+          },
+          "usgs": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 1.68
+          }
+        }
+      },
+      {
+        "run_id": "scheduled__2026-11-23T00:00:00+00:00",
+        "run_type": "scheduled",
+        "state": "success",
+        "seconds": 7.1,
+        "tasks": {
+          "bmkg": {
+            "state": "skipped",
+            "try_number": 0,
+            "duration": null
+          },
+          "freshness": {
+            "state": "skipped",
+            "try_number": 0,
+            "duration": null
+          },
+          "gold": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 3.06
+          },
+          "latest_only": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 0.07
+          },
+          "silver": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 0.75
+          },
+          "usgs": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 1.43
+          }
+        }
+      },
+      {
+        "run_id": "scheduled__2026-11-24T00:00:00+00:00",
+        "run_type": "scheduled",
+        "state": "success",
+        "seconds": 9.1,
+        "tasks": {
+          "bmkg": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 0.51
+          },
+          "freshness": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 1.81
+          },
+          "gold": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 3.04
+          },
+          "latest_only": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 0.07
+          },
+          "silver": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 0.68
+          },
+          "usgs": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 1.28
+          }
+        }
+      }
+    ]
+  },
+  "memory_mib_idle": {
+    "airflow-scheduler": 737.2,
+    "airflow-apiserver": 256.3,
+    "airflow-dag-processor": 154.3,
+    "postgres": 55.1,
+    "minio": 70.3
+  },
+  "backfill_of_the_3_days_before_start": [
+    {
+      "run_id": "backfill__2026-11-18T00:00:00+00:00",
+      "run_type": "backfill",
+      "state": "success",
+      "seconds": 6.6,
+      "tasks": {
+        "bmkg": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "freshness": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "gold": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 3.24
+        },
+        "latest_only": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.07
+        },
+        "silver": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.86
+        },
+        "usgs": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 1.02
+        }
+      },
+      "logical_date": "2026-11-18T00:00:00Z",
+      "usgs_command": "/app/.venv/bin/quake-lake usgs --since 2026-11-11T00:00:00+00:00 --until 2026-11-18T00:00:00+00:00"
+    },
+    {
+      "run_id": "backfill__2026-11-19T00:00:00+00:00",
+      "run_type": "backfill",
+      "state": "success",
+      "seconds": 7.3,
+      "tasks": {
+        "bmkg": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "freshness": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "gold": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 3.2
+        },
+        "latest_only": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.08
+        },
+        "silver": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.8
+        },
+        "usgs": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 1.01
+        }
+      },
+      "logical_date": "2026-11-19T00:00:00Z",
+      "usgs_command": "/app/.venv/bin/quake-lake usgs --since 2026-11-12T00:00:00+00:00 --until 2026-11-19T00:00:00+00:00"
+    },
+    {
+      "run_id": "backfill__2026-11-20T00:00:00+00:00",
+      "run_type": "backfill",
+      "state": "success",
+      "seconds": 6.9,
+      "tasks": {
+        "bmkg": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "freshness": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "gold": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 3.26
+        },
+        "latest_only": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.07
+        },
+        "silver": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.79
+        },
+        "usgs": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 1.4
+        }
+      },
+      "logical_date": "2026-11-20T00:00:00Z",
+      "usgs_command": "/app/.venv/bin/quake-lake usgs --since 2026-11-13T00:00:00+00:00 --until 2026-11-20T00:00:00+00:00"
+    }
+  ],
+  "full_history_run": {
+    "run_id": "manual__2026-11-24T19:58:20.000821+00:00",
+    "run_type": "manual",
+    "state": "success",
+    "seconds": 11.7,
+    "tasks": {
+      "bmkg": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 0.53
+      },
+      "freshness": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 1.94
+      },
+      "gold": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 3.44
+      },
+      "latest_only": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 0.07
+      },
+      "silver": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 2.65
+      },
+      "usgs": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 1.06
+      }
+    },
+    "memory_mib_peak": {
+      "airflow-scheduler": 1284.1,
+      "airflow-apiserver": 261.0,
+      "airflow-dag-processor": 153.8,
+      "postgres": 58.7,
+      "minio": 249.0
+    }
+  },
+  "retry_run_with_minio_stopped": {
+    "run_id": "manual__2026-11-24T19:58:34.817810+00:00",
+    "run_type": "manual",
+    "state": "success",
+    "seconds": 142.6,
+    "tasks": {
+      "bmkg": {
+        "state": "success",
+        "try_number": 2,
+        "duration": 0.53
+      },
+      "freshness": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 1.95
+      },
+      "gold": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 3.16
+      },
+      "latest_only": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 0.08
+      },
+      "silver": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 2.19
+      },
+      "usgs": {
+        "state": "success",
+        "try_number": 2,
+        "duration": 1.09
+      }
+    }
+  },
+  "local_rebuild_of_the_same_bronze": {
+    "bronze_objects": 171,
+    "records": 27286,
+    "events": 26799,
+    "marts": {
+      "fct_earthquakes": {
+        "airflow_rows": 26798,
+        "local_rows": 26798,
+        "only_in_airflow": 0,
+        "only_in_local": 0
+      },
+      "dim_province": {
+        "airflow_rows": 38,
+        "local_rows": 38,
+        "only_in_airflow": 0,
+        "only_in_local": 0
+      },
+      "agg_daily_activity": {
+        "airflow_rows": 4345,
+        "local_rows": 4345,
+        "only_in_airflow": 0,
+        "only_in_local": 0
+      },
+      "agg_province_magnitude": {
+        "airflow_rows": 124,
+        "local_rows": 124,
+        "only_in_airflow": 1,
+        "only_in_local": 1
+      }
+    }
+  }
+}

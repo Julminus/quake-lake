@@ -1,62 +1,24 @@
 {
   "airflow": "3.3.2 (apache/airflow:slim-3.3.2-python3.12), LocalExecutor, Postgres 16",
-  "start_date": "2026-11-20",
+  "start_date": "2026-11-21",
   "images": {
-    "quake-lake-airflow:dev": "3.17GB",
+    "quake-lake-airflow:dev": "2.19GB",
     "apache/airflow:slim-3.3.2-python3.12": "1.11GB",
     "quake-lake:dev": "1.18GB"
   },
-  "compose_up_seconds": 19.3,
+  "compose_up_seconds": 19.6,
   "catch_up": {
     "runs": 4,
     "states": {
       "success": 4
     },
-    "seconds_from_up_to_last_run_done": 52.9,
+    "seconds_from_up_to_last_run_done": 61.1,
     "runs_detail": [
-      {
-        "run_id": "scheduled__2026-11-20T00:00:00+00:00",
-        "run_type": "scheduled",
-        "state": "success",
-        "seconds": 12.0,
-        "tasks": {
-          "bmkg": {
-            "state": "skipped",
-            "try_number": 0,
-            "duration": null
-          },
-          "freshness": {
-            "state": "skipped",
-            "try_number": 0,
-            "duration": null
-          },
-          "gold": {
-            "state": "success",
-            "try_number": 1,
-            "duration": 4.27
-          },
-          "latest_only": {
-            "state": "success",
-            "try_number": 1,
-            "duration": 4.57
-          },
-          "silver": {
-            "state": "success",
-            "try_number": 1,
-            "duration": 0.81
-          },
-          "usgs": {
-            "state": "success",
-            "try_number": 1,
-            "duration": 5.73
-          }
-        }
-      },
       {
         "run_id": "scheduled__2026-11-21T00:00:00+00:00",
         "run_type": "scheduled",
         "state": "success",
-        "seconds": 6.9,
+        "seconds": 9.9,
         "tasks": {
           "bmkg": {
             "state": "skipped",
@@ -71,7 +33,83 @@
           "gold": {
             "state": "success",
             "try_number": 1,
-            "duration": 3.3
+            "duration": 4.1
+          },
+          "latest_only": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 2.09
+          },
+          "silver": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 0.7
+          },
+          "usgs": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 3.62
+          }
+        }
+      },
+      {
+        "run_id": "scheduled__2026-11-22T00:00:00+00:00",
+        "run_type": "scheduled",
+        "state": "success",
+        "seconds": 7.0,
+        "tasks": {
+          "bmkg": {
+            "state": "skipped",
+            "try_number": 0,
+            "duration": null
+          },
+          "freshness": {
+            "state": "skipped",
+            "try_number": 0,
+            "duration": null
+          },
+          "gold": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 3.09
+          },
+          "latest_only": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 0.09
+          },
+          "silver": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 0.78
+          },
+          "usgs": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 1.04
+          }
+        }
+      },
+      {
+        "run_id": "scheduled__2026-11-23T00:00:00+00:00",
+        "run_type": "scheduled",
+        "state": "success",
+        "seconds": 7.1,
+        "tasks": {
+          "bmkg": {
+            "state": "skipped",
+            "try_number": 0,
+            "duration": null
+          },
+          "freshness": {
+            "state": "skipped",
+            "try_number": 0,
+            "duration": null
+          },
+          "gold": {
+            "state": "success",
+            "try_number": 1,
+            "duration": 3.04
           },
           "latest_only": {
             "state": "success",
@@ -81,7 +119,7 @@
           "silver": {
             "state": "success",
             "try_number": 1,
-            "duration": 0.66
+            "duration": 0.68
           },
           "usgs": {
             "state": "success",
@@ -91,45 +129,7 @@
         }
       },
       {
-        "run_id": "scheduled__2026-11-22T00:00:00+00:00",
-        "run_type": "scheduled",
-        "state": "success",
-        "seconds": 7.3,
-        "tasks": {
-          "bmkg": {
-            "state": "skipped",
-            "try_number": 0,
-            "duration": null
-          },
-          "freshness": {
-            "state": "skipped",
-            "try_number": 0,
-            "duration": null
-          },
-          "gold": {
-            "state": "success",
-            "try_number": 1,
-            "duration": 3.16
-          },
-          "latest_only": {
-            "state": "success",
-            "try_number": 1,
-            "duration": 0.08
-          },
-          "silver": {
-            "state": "success",
-            "try_number": 1,
-            "duration": 0.76
-          },
-          "usgs": {
-            "state": "success",
-            "try_number": 1,
-            "duration": 1.06
-          }
-        }
-      },
-      {
-        "run_id": "scheduled__2026-11-23T00:00:00+00:00",
+        "run_id": "scheduled__2026-11-24T00:00:00+00:00",
         "run_type": "scheduled",
         "state": "success",
         "seconds": 9.1,
@@ -142,12 +142,12 @@
           "freshness": {
             "state": "success",
             "try_number": 1,
-            "duration": 1.92
+            "duration": 1.81
           },
           "gold": {
             "state": "success",
             "try_number": 1,
-            "duration": 3.15
+            "duration": 3.02
           },
           "latest_only": {
             "state": "success",
@@ -157,89 +157,166 @@
           "silver": {
             "state": "success",
             "try_number": 1,
-            "duration": 0.72
+            "duration": 0.7
           },
           "usgs": {
             "state": "success",
             "try_number": 1,
-            "duration": 1.03
+            "duration": 1.12
           }
         }
       }
     ]
   },
   "memory_mib_idle": {
-    "airflow-apiserver": 255.1,
-    "airflow-dag-processor": 154.2,
-    "airflow-scheduler": 741.7,
-    "postgres": 54.1,
-    "minio": 65.2
+    "airflow-scheduler": 741.1,
+    "airflow-apiserver": 266.8,
+    "airflow-dag-processor": 154.8,
+    "postgres": 60.1,
+    "minio": 71.0
   },
-  "full_history_run": {
-    "run_id": "manual__2026-11-23T18:47:20.311739+00:00",
-    "run_type": "manual",
-    "state": "success",
-    "seconds": 11.1,
-    "tasks": {
-      "bmkg": {
-        "state": "success",
-        "try_number": 1,
-        "duration": 0.52
+  "backfill_of_the_3_days_before_start": [
+    {
+      "run_id": "backfill__2026-11-18T00:00:00+00:00",
+      "run_type": "backfill",
+      "state": "success",
+      "seconds": 6.7,
+      "tasks": {
+        "bmkg": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "freshness": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "gold": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 3.05
+        },
+        "latest_only": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.07
+        },
+        "silver": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.73
+        },
+        "usgs": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 1.04
+        }
       },
-      "freshness": {
-        "state": "success",
-        "try_number": 1,
-        "duration": 1.91
-      },
-      "gold": {
-        "state": "success",
-        "try_number": 1,
-        "duration": 3.37
-      },
-      "latest_only": {
-        "state": "success",
-        "try_number": 1,
-        "duration": 0.07
-      },
-      "silver": {
-        "state": "success",
-        "try_number": 1,
-        "duration": 2.16
-      },
-      "usgs": {
-        "state": "success",
-        "try_number": 1,
-        "duration": 1.24
-      }
+      "logical_date": "2026-11-18T00:00:00Z",
+      "usgs_command": "/app/.venv/bin/quake-lake usgs --since 2026-11-11T00:00:00+00:00 --until 2026-11-18T00:00:00+00:00"
     },
-    "memory_mib_peak": {
-      "airflow-apiserver": 256.3,
-      "airflow-dag-processor": 153.6,
-      "airflow-scheduler": 1126.4,
-      "postgres": 54.9,
-      "minio": 252.6
+    {
+      "run_id": "backfill__2026-11-19T00:00:00+00:00",
+      "run_type": "backfill",
+      "state": "success",
+      "seconds": 7.1,
+      "tasks": {
+        "bmkg": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "freshness": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "gold": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 3.07
+        },
+        "latest_only": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.07
+        },
+        "silver": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.7
+        },
+        "usgs": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 1.0
+        }
+      },
+      "logical_date": "2026-11-19T00:00:00Z",
+      "usgs_command": "/app/.venv/bin/quake-lake usgs --since 2026-11-12T00:00:00+00:00 --until 2026-11-19T00:00:00+00:00"
+    },
+    {
+      "run_id": "backfill__2026-11-20T00:00:00+00:00",
+      "run_type": "backfill",
+      "state": "success",
+      "seconds": 6.9,
+      "tasks": {
+        "bmkg": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "freshness": {
+          "state": "skipped",
+          "try_number": 0,
+          "duration": null
+        },
+        "gold": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 3.03
+        },
+        "latest_only": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.07
+        },
+        "silver": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 0.73
+        },
+        "usgs": {
+          "state": "success",
+          "try_number": 1,
+          "duration": 1.5
+        }
+      },
+      "logical_date": "2026-11-20T00:00:00Z",
+      "usgs_command": "/app/.venv/bin/quake-lake usgs --since 2026-11-13T00:00:00+00:00 --until 2026-11-20T00:00:00+00:00"
     }
-  },
-  "retry_run_with_minio_stopped": {
-    "run_id": "manual__2026-11-23T18:47:35.176272+00:00",
+  ],
+  "full_history_run": {
+    "run_id": "manual__2026-11-24T20:12:15.565836+00:00",
     "run_type": "manual",
     "state": "success",
-    "seconds": 141.2,
+    "seconds": 11.9,
     "tasks": {
       "bmkg": {
         "state": "success",
-        "try_number": 2,
+        "try_number": 1,
         "duration": 0.53
       },
       "freshness": {
         "state": "success",
         "try_number": 1,
-        "duration": 1.89
+        "duration": 1.9
       },
       "gold": {
         "state": "success",
         "try_number": 1,
-        "duration": 3.51
+        "duration": 3.27
       },
       "latest_only": {
         "state": "success",
@@ -249,23 +326,68 @@
       "silver": {
         "state": "success",
         "try_number": 1,
-        "duration": 2.28
+        "duration": 2.1
+      },
+      "usgs": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 1.0
+      }
+    },
+    "memory_mib_peak": {
+      "airflow-scheduler": 1199.1,
+      "airflow-apiserver": 268.2,
+      "airflow-dag-processor": 154.4,
+      "postgres": 62.5,
+      "minio": 253.3
+    }
+  },
+  "retry_run_with_minio_stopped": {
+    "run_id": "manual__2026-11-24T20:12:32.369755+00:00",
+    "run_type": "manual",
+    "state": "success",
+    "seconds": 141.5,
+    "tasks": {
+      "bmkg": {
+        "state": "success",
+        "try_number": 2,
+        "duration": 0.52
+      },
+      "freshness": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 1.92
+      },
+      "gold": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 3.17
+      },
+      "latest_only": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 0.07
+      },
+      "silver": {
+        "state": "success",
+        "try_number": 1,
+        "duration": 2.12
       },
       "usgs": {
         "state": "success",
         "try_number": 2,
-        "duration": 1.28
+        "duration": 1.48
       }
     }
   },
   "local_rebuild_of_the_same_bronze": {
-    "bronze_objects": 168,
-    "records": 27220,
-    "events": 26795,
+    "bronze_objects": 171,
+    "records": 27286,
+    "events": 26799,
     "marts": {
       "fct_earthquakes": {
-        "airflow_rows": 26794,
-        "local_rows": 26794,
+        "airflow_rows": 26798,
+        "local_rows": 26798,
         "only_in_airflow": 0,
         "only_in_local": 0
       },

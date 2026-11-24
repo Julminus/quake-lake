@@ -22,7 +22,7 @@ DAG that runs them daily are built and measured. Terraform comes next; see
 
 ## Results
 
-Measured on 2026-11-20 (bronze), 2026-11-21 (silver), 2026-11-22 (gold) and 2026-11-23
+Measured on 2026-11-20 (bronze), 2026-11-21 (silver), 2026-11-22 (gold) and 2026-11-24
 (Airflow, UTC) on this PC (Windows 11, Docker Desktop, a home connection in Indonesia).
 Where each number comes from, and how to re-run it, is in
 [`docs/results/`](docs/results/README.md).
@@ -31,31 +31,40 @@ Where each number comes from, and how to re-run it, is in
 
 From empty volumes, with the images built (`scripts/measure_airflow.py`):
 
-- **`docker compose up -d --wait` takes 19.3 s**, and the DAG's four catch-up runs (20 to
-  23 November) were all done **52.9 s after it started**. A run takes 6.9 to 12.0 s (in
-  the first, `latest_only` and `usgs` took 4 to 5 s longer than in the others); `bmkg` and
-  `freshness` were skipped in the three older runs and ran in the latest, as designed.
-- **A daily run over the whole history: 11.1 s.** With the local bronze (the S7 backfill
+- **`docker compose up -d --wait` takes 19.6 s**, and the DAG's four runs from 21 to 24
+  November (three of them catch-up) were all done **61.1 s after it started**. A run takes
+  7.0 to 9.9 s (in the first, `latest_only` and `usgs` took 2.0 to 2.6 s longer than in the
+  others); `bmkg` and `freshness` were skipped in the three older runs and ran in the
+  latest, as designed.
+- **Airflow's own backfill** of the 3 days before the start date (`POST /api/v2/backfills`,
+  what `airflow backfill create` does): three runs of 6.7 to 7.1 s, each fetching the 7 days
+  before its date (11 to 18, 12 to 19 and 13 to 20 November, as Airflow rendered the
+  command), with `bmkg` and `freshness` skipped.
+- **A daily run over the whole history: 11.9 s.** With the local bronze (the S7 backfill
   and later fetches, 151 objects) copied into MinIO, the next run (BMKG and 7 days of USGS)
-  rebuilt silver from all of bronze in 2.2 s and built and tested gold in 3.4 s. After the
-  measurement, MinIO's bronze held 168 objects and 27,220 records: 26,795 events.
+  rebuilt silver from all of bronze in 2.1 s and built and tested gold in 3.3 s. After the
+  measurement, MinIO's bronze held 171 objects and 27,286 records: 26,799 events.
 - **The gold Airflow built equals a local build, row for row.** Rebuilding silver and gold
-  outside Docker from a copy of MinIO's bronze gives the same four marts (26,794
+  outside Docker from a copy of MinIO's bronze gives the same four marts (26,798
   earthquakes, 38 provinces, 4,345 days, 124 province and magnitude rows), with 0 rows in
-  one and not the other. The Airflow fact table had been built incrementally over 6 runs,
-  the local one in one go.
+  one and not the other. The Airflow fact table had been built incrementally over 9 runs,
+  the local one in one go. This check caught a bug: a mean depth of exactly 27.35 came out
+  27.3 in one build and 27.4 in the other, because a sum of floats depends on the row order,
+  which differs between the two; gold now averages exact decimals.
 - **Retries:** with MinIO stopped as a run started, `bmkg` and `usgs` both needed a second
   try. MinIO was started again once one of them was waiting for its retry, and after the
-  2-minute retry delay both succeeded. The run succeeded in 141 s.
+  2-minute retry delay both succeeded. The run succeeded in 141.5 s.
 - **The deadline alert fires:** with the interval set to 1 s by hand for one run, the
   callback logged the miss 3 s after the deadline
-  ([`deadline-s10.log`](docs/results/deadline-s10.log)).
-- **Memory:** 1,270 MiB with the stack idle (scheduler 742, API server 255, DAG
-  processor 154, MinIO 65, Postgres 54); during the whole-history run the scheduler peaked
-  at 1,126 MiB and MinIO at 253 (`docker stats`, sampled in a loop). Docker's VM here has
+  ([`deadline-s10.log`](docs/results/deadline-s10.log), 2026-11-23).
+- **Memory:** 1,294 MiB with the stack idle (scheduler 741, API server 267, DAG
+  processor 155, MinIO 71, Postgres 60); during the whole-history run the scheduler peaked
+  at 1,199 MiB and MinIO at 253 (`docker stats`, sampled in a loop). Docker's VM here has
   9.7 GiB.
+- **The Airflow image is 2.19 GB** (`docker images`; slim Airflow alone is 1.11 GB). It was
+  3.18 GB before uv's download cache was kept out of it.
 
-![Airflow's view of the quake_lake DAG: six runs, bmkg and freshness skipped in the three older catch-up runs, and the run that waited for its retries](docs/img/airflow-dag.png)
+![Airflow's view of the quake_lake DAG: nine runs (three backfill, four scheduled, two manual), bmkg and freshness skipped in the six older ones, and the run that waited for its retries](docs/img/airflow-dag.png)
 
 <sub>The Airflow UI after the measurement, captured with headless Chrome; times are WIB (UTC+7).</sub>
 
@@ -161,9 +170,9 @@ fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
 - **MinIO:** with the image pulled, `docker compose up -d --wait minio` is healthy in 2.3 to
   2.4 s. The CLI's image is 1,183 MB since gold (233 MB with bronze only, 688 MB with
   silver): pyarrow alone is 170 MB, and dbt brings DuckDB (66 MB), Babel (33 MB) and more.
-- **Tests:** 194 offline tests (recorded responses and small built records; one concurrency
+- **Tests:** 199 offline tests (recorded responses and small built records; one concurrency
   test runs on Linux only) at 100% branch coverage of the Python package (CI fails below
-  90%), in 12.6 to 12.8 s (three runs); 4 of them run dbt (about 7 s of that). 7 test the
+  90%), in 14.5 to 15.1 s (three runs); 5 of them run dbt (about 10 s of that). 11 test the
   Airflow DAG and need Airflow, so they skip outside its image and CI runs them inside it.
   Two more run against a real MinIO (a storage round trip and a silver rebuild); CI runs
   them too.
@@ -279,10 +288,10 @@ flowchart LR
     LO --> FR
 ```
 
-  In a catch-up run, `latest_only` skips `bmkg` (BMKG's feeds only hold the latest events)
+  In a catch-up or backfill run, `latest_only` skips `bmkg` (BMKG's feeds only hold the latest events)
   and `freshness` (which compares with now); `silver` runs when `bmkg` was skipped, not when
   it failed. Every task retries twice, two minutes apart, and stops after 30 minutes; a run
-  that isn't done an hour after it was queued calls a deadline alert. The UI is at
+  that hasn't succeeded an hour after it was queued calls a deadline alert. The UI is at
   http://127.0.0.1:8080 (no login, local only).
 
 ## Quickstart
@@ -303,8 +312,8 @@ Then ask gold something, for instance the provinces with the most M5+ earthquake
 uv run python -c "import duckdb; print(duckdb.connect('lake/gold.duckdb').sql('select province, count(*) as m5_plus from fct_earthquakes join dim_province using (province_code) where in_indonesia and magnitude >= 5 group by 1 order by 2 desc limit 5'))"
 ```
 
-**The whole pipeline on Airflow**, with Docker only (the first `up` pulls slim Airflow,
-Postgres and MinIO and builds the 3.17 GB Airflow image):
+**The whole pipeline on Airflow**, with Docker only (the first `up` pulls the images it
+needs, slim Airflow, Postgres, MinIO and its client, and uv, and builds the Airflow image):
 
 ```bash
 git clone https://github.com/Julminus/quake-lake && cd quake-lake
@@ -472,24 +481,34 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   imports them; its bundle is still just `src/` on the runtime's boto3. The CLI image
   carries them all, and dbt too (1,183 MB); the Airflow image builds the same virtualenv
   against its own Python, with `transform/` next to it.
-- **Airflow runs the CLI, from a virtualenv of its own.** Each task is a `BashOperator`
-  calling `/app/.venv/bin/quake-lake` or `/app/.venv/bin/dbt`, the commands `make run` and
-  `make freshness` use, so a task fails the way the CLI does (exit code 1 and its one-line reason) and can
-  be re-run by hand the same way. The pipeline's virtualenv is built against the Airflow
+- **Airflow runs the CLI, from a virtualenv of its own.** Every task but `latest_only` is a
+  `BashOperator` calling `/app/.venv/bin/quake-lake` or `/app/.venv/bin/dbt`, the commands
+  `make run` and `make freshness` use, so a task fails when its command exits non-zero
+  (`quake-lake` with a one-line `error:`, dbt with its summary) and can be re-run by hand
+  the same way. The pipeline's virtualenv is built against the Airflow
   image's Python from `uv.lock`, so Airflow's pinned dependencies and dbt's never have to
-  agree; Airflow itself is the slim image (core and the standard provider) plus its two
-  Postgres drivers, at the versions Airflow's constraints pin. The cost is the image:
-  3.17 GB as `docker images` reports it, against 1.11 GB for slim Airflow alone.
-- **Catch-up fills missed days; the 12-year history is one backfill.** `catchup=True` makes
-  a run for every day since the start date that has none (the PC was off, Airflow was
-  down), and since each run fetches its own 7 days, a USGS gap of any length closes run by
-  run (BMKG events that scrolled off its feeds meanwhile are gone). It isn't how to load
-  2015 to today: about 4,350 daily runs would each rebuild silver from all of bronze, so
-  the history is `quake-lake usgs --since 2015-01-01` (143 monthly requests,
+  agree; Airflow itself is the slim image (core and the five providers it requires,
+  `standard` among them) plus its two Postgres drivers, at the versions Airflow's
+  constraints pin. The cost is the image: 2.19 GB as `docker images` reports it, against
+  1.11 GB for slim Airflow alone. It was 3.18 GB until uv's download cache (987 MB) was
+  kept out of it with a build cache mount: the Airflow base image puts `UV_CACHE_DIR` in
+  `/tmp`, inside the layer.
+- **Catch-up fills missed days, a backfill any past ones; the 12-year history is one
+  fetch.** `catchup=True` makes a run for every day since the last scheduled run, or since
+  the start date on the first `up` (the PC was off, Airflow was down; a gap before the last
+  run isn't refilled), and since each run fetches the 7 days before its date, a USGS gap
+  of any length closes run by run (BMKG events that scrolled off its feeds meanwhile are
+  gone). Airflow's own backfill (`docker compose run --rm airflow-cli backfill create
+  --dag-id quake_lake --from-date ... --to-date ...`) runs any past days the same way,
+  measured above; so does a run triggered for a past date (its logical date, not the
+  trigger time, ends the window), unless it's before the start date: Airflow then creates
+  no tasks and marks the empty run a success. Neither is how to
+  load 2015 to today: about 4,350 daily runs would each rebuild silver from all of bronze,
+  so the history is `quake-lake usgs --since 2015-01-01` (143 monthly requests,
   2.5 minutes; `docker compose run --rm ingest usgs --since 2015-01-01` on MinIO), and the
-  next run builds on it. The start date is `QUAKE_LAKE_START_DATE`, else 2026-11-20: a
-  fixed default, so the later someone starts the stack without setting it, the more
-  catch-up runs there are (one per day, about 10 s each).
+  next run builds on it. The start date is `QUAKE_LAKE_START_DATE` (a date, read as 00:00
+  UTC), else 2026-11-20: a fixed default, so the later someone starts the stack without
+  setting it, the more catch-up runs there are (one per day, about 10 s each).
 - **One run at a time.** Silver is rebuilt from all of bronze and gold is one DuckDB file,
   so two runs at once would race; `max_active_runs=1` queues them.
 - **The data-quality checks are dbt's, in two places.** `dbt build` runs the 41 data tests
@@ -501,8 +520,8 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
 - **Retries, timeouts and a deadline instead of an SLA.** Each task retries twice, 2 minutes
   apart (a BMKG or USGS outage, MinIO restarting), on top of `fetch()`'s own retries, and
   stops after 30 minutes (a stalled USGS request can take 11, above). Airflow 3 removed
-  SLAs; their replacement is a deadline alert, still marked experimental: a run that isn't
-  done an hour after it was queued calls `missed_deadline` in
+  SLAs; their replacement is a deadline alert, still marked experimental: a run that hasn't
+  succeeded an hour after it was queued calls `missed_deadline` in
   [`plugins/quake_lake_alerts.py`](plugins/quake_lake_alerts.py), which logs an error in
   the scheduler's log. That is where a Slack or email notifier would go; none is set up.
   Airflow clears a run's deadline only when the run succeeds, so a run that failed early
@@ -512,7 +531,11 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
 - **LocalExecutor, no Celery.** The scheduler runs the tasks as its own subprocesses, so
   there is no Redis and no worker container; a run takes about 10 s of work a day. The
   official compose file adds Redis and a Celery worker (and Flower, behind a profile) for
-  capacity this pipeline doesn't need, and a triggerer, which no task here uses.
+  capacity this pipeline doesn't need, and a triggerer, which no task here uses. The task
+  processes call the API server, so the scheduler waits for it to be healthy (a task
+  started before it fails and spends a retry); Postgres and MinIO restart with Airflow's
+  services (`restart: unless-stopped`) after a crash or a Docker restart, since without
+  them the scheduler only restart-loops and no run, and no deadline alert, happens.
 - **Gold reads silver from MinIO; gold itself stays a file.** dbt's `minio` target
   (`DBT_TARGET=minio`, set in `compose.yaml`) loads DuckDB's httpfs extension, installed
   into the image at build time, and passes the CLI's MinIO variables as a DuckDB S3
@@ -522,13 +545,19 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
 - **No login, 127.0.0.1 only.** The UI and API run with Airflow's simple auth manager in
   "everyone is an admin" mode, and like MinIO's ports they bind to the loopback address.
   The Postgres password and the API token secret are local defaults (the secret can be set
-  with `AIRFLOW_JWT_SECRET` in `.env`). None of this is a deployment.
+  with `AIRFLOW_JWT_SECRET` in `.env`). Loopback keeps other machines out, not a web page
+  in your own browser (DNS rebinding), and the API can trigger runs and read logs. None
+  of this is a deployment.
 - **CI runs the DAG's tasks in the Airflow image on a recorded day.** The `airflow` job runs
-  the DAG tests in the image, then `silver`, `gold` and `freshness` with `airflow tasks
-  test` on the Palu fixture in MinIO (no network): silver must write the fixture's 81 events
-  to S3, gold must read them back through httpfs and pass dbt's tests, and freshness must
-  fail, since the day is from 2018. `airflow dags test` would run the whole DAG, but in
-  Airflow 3.3.2 it crashes on any DAG with a deadline alert
+  the DAG tests in the image (with `QUAKE_LAKE_AIRFLOW=1`, so a broken Airflow fails them
+  rather than skipping them), loads httpfs in a container with no network, then runs
+  `silver`, `gold` and `freshness` with `airflow tasks test` on the Palu fixture in MinIO
+  (nothing fetched): silver must write the fixture's 81 events to S3, gold must read them
+  back through httpfs and pass dbt's tests, and freshness must fail, since the day is from
+  2018. The `usgs` and `bmkg` tasks need the network and aren't run in CI; the test of the
+  USGS command renders its template. `airflow dags test` would run the whole DAG, but in
+  Airflow 3.3.2 it ends in a traceback and a non-zero exit once a DAG with a deadline
+  alert succeeds
   ([apache/airflow#73428](https://github.com/apache/airflow/issues/73428)).
 - **MinIO from Chainguard.** MinIO stopped publishing community images in 2025 (`minio/minio`
   is gone from Docker Hub), so `compose.yaml` uses Chainguard's build from source, pinned by
@@ -538,8 +567,9 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
 
 - **Terraform** for S3, Lambda with EventBridge schedules (hourly BMKG, daily USGS), Glue
   and Athena (plan only), then a **Streamlit** dashboard on the gold marts.
-- **Airflow, later:** a Slack or email notifier on the deadline alert and on failures; the
-  DAG test through `airflow dags test` once apache/airflow#73428 is fixed.
+- **Airflow, later:** a Slack or email notifier on the deadline alert and on failures; a
+  whole-DAG test with `airflow dags test` once apache/airflow#73428 is fixed (its manual run
+  would fetch BMKG and USGS live, so CI would need them pointed at recorded responses).
 - **Gold, later:** local days per province (WIB, WITA, WIT); the marts as Parquet for Athena.
 - **Silver, later:** read only new bronze partitions once a full rebuild gets slow on S3;
   province polygons.
