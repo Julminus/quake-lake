@@ -32,29 +32,30 @@ Where each number comes from, and how to re-run it, is in
 From empty volumes, with the images built (`scripts/measure_airflow.py`):
 
 - **`docker compose up -d --wait` takes 19.3 s**, and the DAG's four catch-up runs (20 to
-  23 November) were all done **52.9 s after it started**. A run takes 6.9 to 12.0 s (the
-  first one pays for the scheduler's first task start); `bmkg` and `freshness` were
-  skipped in the three older runs and ran in the latest, as designed.
-- **The whole history in one run: 11.1 s.** With the local bronze (the S7 backfill and
-  later fetches, 151 objects) copied into MinIO, a run over 168 objects and 27,220 records
-  wrote 26,795 events to silver in 2.2 s and built and tested gold in 3.4 s.
+  23 November) were all done **52.9 s after it started**. A run takes 6.9 to 12.0 s (in
+  the first, `latest_only` and `usgs` took 4 to 5 s longer than in the others); `bmkg` and
+  `freshness` were skipped in the three older runs and ran in the latest, as designed.
+- **A daily run over the whole history: 11.1 s.** With the local bronze (the S7 backfill
+  and later fetches, 151 objects) copied into MinIO, the next run (BMKG and 7 days of USGS)
+  rebuilt silver from all of bronze in 2.2 s and built and tested gold in 3.4 s. After the
+  measurement, MinIO's bronze held 168 objects and 27,220 records: 26,795 events.
 - **The gold Airflow built equals a local build, row for row.** Rebuilding silver and gold
   outside Docker from a copy of MinIO's bronze gives the same four marts (26,794
   earthquakes, 38 provinces, 4,345 days, 124 province and magnitude rows), with 0 rows in
   one and not the other. The Airflow fact table had been built incrementally over 6 runs,
   the local one in one go.
-- **Retries:** with MinIO stopped as a run started, `bmkg` and `usgs` failed their first
-  try; MinIO was started again, and both succeeded on their second, 2 minutes later. The
-  run succeeded in 141 s.
+- **Retries:** with MinIO stopped as a run started, `bmkg` and `usgs` both needed a second
+  try. MinIO was started again once one of them was waiting for its retry, and after the
+  2-minute retry delay both succeeded. The run succeeded in 141 s.
 - **The deadline alert fires:** with the interval set to 1 s by hand for one run, the
   callback logged the miss 3 s after the deadline
   ([`deadline-s10.log`](docs/results/deadline-s10.log)).
-- **Memory:** 1.27 GB with the stack idle (scheduler 742 MiB, API server 255, DAG
+- **Memory:** 1,270 MiB with the stack idle (scheduler 742, API server 255, DAG
   processor 154, MinIO 65, Postgres 54); during the whole-history run the scheduler peaked
   at 1,126 MiB and MinIO at 253 (`docker stats`, sampled in a loop). Docker's VM here has
   9.7 GiB.
 
-![Airflow's view of the quake_lake DAG: six runs, bmkg and freshness skipped in the three catch-up runs, and the run that waited for its retries](docs/img/airflow-dag.png)
+![Airflow's view of the quake_lake DAG: six runs, bmkg and freshness skipped in the three older catch-up runs, and the run that waited for its retries](docs/img/airflow-dag.png)
 
 <sub>The Airflow UI after the measurement, captured with headless Chrome; times are WIB (UTC+7).</sub>
 
@@ -266,7 +267,7 @@ draws the lineage:
   3.3 (LocalExecutor: an API server, a scheduler that runs the tasks, a DAG processor). The
   DAG in [`dags/quake_lake_daily.py`](dags/quake_lake_daily.py) is unpaused and runs at
   00:00 UTC every day, catching up one run per day from `QUAKE_LAKE_START_DATE`. Its tasks
-  are the steps of `make run`, on MinIO:
+  are the steps of `make run`, then `make freshness`, on MinIO:
 
 ```mermaid
 flowchart LR
@@ -325,7 +326,7 @@ and gold. Run dbt from the repository root (the Makefile does): the default path
 relative to it, and the folder `$GOLD_DB` goes in must exist.
 
 **With MinIO instead of a local folder:** `make minio` starts it on 127.0.0.1:9000 and creates
-the `lake` bucket, then `make minio-run` runs the BMKG, USGS and silver steps (not gold yet) in a container, writing to
+the `lake` bucket, then `make minio-run` runs the BMKG, USGS and silver steps (gold on MinIO runs in the Airflow stack) in a container, writing to
 `s3://lake/bronze` and `s3://lake/silver`. The console is at http://127.0.0.1:9001 (user `quakelake`, password
 `quakelake-local`, or your own from `.env`; see `.env.example`). To run the MinIO storage
 tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, then
@@ -472,8 +473,8 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   carries them all, and dbt too (1,183 MB); the Airflow image builds the same virtualenv
   against its own Python, with `transform/` next to it.
 - **Airflow runs the CLI, from a virtualenv of its own.** Each task is a `BashOperator`
-  calling `/app/.venv/bin/quake-lake` or `/app/.venv/bin/dbt`, the commands `make run`
-  uses, so a task fails the way the CLI does (exit code 1 and its one-line reason) and can
+  calling `/app/.venv/bin/quake-lake` or `/app/.venv/bin/dbt`, the commands `make run` and
+  `make freshness` use, so a task fails the way the CLI does (exit code 1 and its one-line reason) and can
   be re-run by hand the same way. The pipeline's virtualenv is built against the Airflow
   image's Python from `uv.lock`, so Airflow's pinned dependencies and dbt's never have to
   agree; Airflow itself is the slim image (core and the standard provider) plus its two
@@ -481,12 +482,14 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   3.17 GB as `docker images` reports it, against 1.11 GB for slim Airflow alone.
 - **Catch-up fills missed days; the 12-year history is one backfill.** `catchup=True` makes
   a run for every day since the start date that has none (the PC was off, Airflow was
-  down), and since each run fetches its own 7 days, a gap of any length closes run by run.
-  It isn't how to load 2015 to today: 4,343 daily runs would each rebuild silver from all of
-  bronze, so the history is `quake-lake usgs --since 2015-01-01` (143 monthly requests,
+  down), and since each run fetches its own 7 days, a USGS gap of any length closes run by
+  run (BMKG events that scrolled off its feeds meanwhile are gone). It isn't how to load
+  2015 to today: about 4,350 daily runs would each rebuild silver from all of bronze, so
+  the history is `quake-lake usgs --since 2015-01-01` (143 monthly requests,
   2.5 minutes; `docker compose run --rm ingest usgs --since 2015-01-01` on MinIO), and the
-  next run builds on it. The start date comes from `QUAKE_LAKE_START_DATE` because a fixed
-  date in the code would mean more catch-up runs the later someone starts the stack.
+  next run builds on it. The start date is `QUAKE_LAKE_START_DATE`, else 2026-11-20: a
+  fixed default, so the later someone starts the stack without setting it, the more
+  catch-up runs there are (one per day, about 10 s each).
 - **One run at a time.** Silver is rebuilt from all of bronze and gold is one DuckDB file,
   so two runs at once would race; `max_active_runs=1` queues them.
 - **The data-quality checks are dbt's, in two places.** `dbt build` runs the 41 data tests
@@ -502,12 +505,14 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   done an hour after it was queued calls `missed_deadline` in
   [`plugins/quake_lake_alerts.py`](plugins/quake_lake_alerts.py), which logs an error in
   the scheduler's log. That is where a Slack or email notifier would go; none is set up.
+  Airflow clears a run's deadline only when the run succeeds, so a run that failed early
+  is still reported when its hour is up: its data isn't there either.
   The callback lives in a plugin module because Airflow stores it as an import path and a
   DAG file can't be imported by name.
 - **LocalExecutor, no Celery.** The scheduler runs the tasks as its own subprocesses, so
   there is no Redis and no worker container; a run takes about 10 s of work a day. The
-  official compose file's Celery setup adds four containers for capacity this pipeline
-  doesn't need.
+  official compose file adds Redis and a Celery worker (and Flower, behind a profile) for
+  capacity this pipeline doesn't need, and a triggerer, which no task here uses.
 - **Gold reads silver from MinIO; gold itself stays a file.** dbt's `minio` target
   (`DBT_TARGET=minio`, set in `compose.yaml`) loads DuckDB's httpfs extension, installed
   into the image at build time, and passes the CLI's MinIO variables as a DuckDB S3

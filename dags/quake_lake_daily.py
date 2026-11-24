@@ -26,7 +26,7 @@ from quake_lake_alerts import missed_deadline
 
 QUAKE_LAKE = "/app/.venv/bin/quake-lake"
 DBT = "/app/.venv/bin/dbt"
-# Catch-up creates one run per day from here; each takes about a minute.
+# Catch-up creates one run per day from here; each takes about 10 s.
 START = os.environ.get("QUAKE_LAKE_START_DATE") or "2026-11-20"
 
 with DAG(
@@ -44,7 +44,7 @@ with DAG(
         "execution_timeout": timedelta(minutes=30),
     },
     # Airflow 3's replacement for SLAs: alert when a run isn't done an hour after it
-    # was queued (a normal run takes about a minute).
+    # was queued (a normal run takes about 10 s).
     deadline=DeadlineAlert(
         reference=DeadlineReference.DAGRUN_QUEUED_AT,
         interval=timedelta(hours=1),
