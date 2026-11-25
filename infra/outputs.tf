@@ -8,14 +8,12 @@ output "buckets" {
   }
 }
 
-output "ingest_function" {
-  description = "The ingest Lambda: aws lambda invoke --function-name <this> out.json"
-  value       = module.ingest.function_name
-}
-
-output "ingest_package_bytes" {
-  description = "Size of the Lambda's deployment zip."
-  value       = module.ingest.package_bytes
+output "ingest" {
+  description = "The ingest Lambda (aws lambda invoke --function-name <function.name> out.json) and its schedules."
+  value = {
+    function  = module.ingest.function
+    schedules = module.ingest.schedules
+  }
 }
 
 output "athena" {

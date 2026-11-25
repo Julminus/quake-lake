@@ -12,7 +12,7 @@ terraform {
 }
 
 variable "name_prefix" {
-  description = "Bucket name prefix; AWS appends a unique suffix (names are global)."
+  description = "Bucket name prefix; Terraform appends a unique suffix (names are global)."
   type        = string
 }
 
@@ -124,4 +124,9 @@ output "bucket" {
 output "arn" {
   description = "The bucket's ARN."
   value       = aws_s3_bucket.this.arn
+}
+
+output "versioned" {
+  description = "Whether old versions are kept."
+  value       = length(aws_s3_bucket_versioning.this) == 1
 }

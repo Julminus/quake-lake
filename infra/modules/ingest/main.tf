@@ -73,6 +73,8 @@ data "archive_file" "package" {
   output_path      = var.package_path
   excludes         = ["**/__pycache__/**"]
   output_file_mode = "0644" # the same zip, and hash, from Windows and Linux checkouts
+  # shortcut: any other untracked file under src/ is packaged too, so the hash matches only
+  # a clean checkout; package from an export of the commit if that ever matters.
 }
 
 resource "aws_cloudwatch_log_group" "this" {
@@ -93,8 +95,8 @@ resource "aws_iam_role" "this" {
 }
 
 # What the handler does and nothing more: write objects into bronze, and its own logs.
-# No list, read or delete: it never needs them, so a bug can't destroy bronze (and
-# bronze is versioned, so an overwrite can't either).
+# No list, read or delete: it never needs them, so a bug can't delete bronze (and bronze
+# is versioned, so an overwrite can be undone for 30 days).
 resource "aws_iam_role_policy" "this" {
   name = "ingest"
   role = aws_iam_role.this.id
@@ -142,6 +144,16 @@ resource "aws_lambda_function" "this" {
   depends_on = [aws_iam_role_policy.this]
 }
 
+# No retries of a failed invocation (Lambda's default for EventBridge's asynchronous calls
+# is two): fetch() already retries each request, the handler fails only after writing every
+# feed that worked, so a retry would write those again, and the next scheduled poll comes
+# anyway (BMKG within the hour; USGS the next day, 7 days back). Failures show in the
+# function's Errors metric and its logs.
+resource "aws_lambda_function_event_invoke_config" "this" {
+  function_name          = aws_lambda_function.this.function_name
+  maximum_retry_attempts = 0
+}
+
 resource "aws_cloudwatch_event_rule" "this" {
   for_each            = var.schedules
   name                = "${var.function_name}-${each.key}"
@@ -164,17 +176,21 @@ resource "aws_lambda_permission" "this" {
   source_arn    = aws_cloudwatch_event_rule.this[each.key].arn
 }
 
-output "function_name" {
-  description = "The Lambda function's name."
-  value       = aws_lambda_function.this.function_name
+output "function" {
+  description = "The function as built: name, memory, timeout, log retention, zip size."
+  value = {
+    name               = aws_lambda_function.this.function_name
+    memory_mb          = aws_lambda_function.this.memory_size
+    timeout_s          = aws_lambda_function.this.timeout
+    log_retention_days = aws_cloudwatch_log_group.this.retention_in_days
+    package_bytes      = data.archive_file.package.output_size
+  }
 }
 
-output "role_arn" {
-  description = "The function's execution role."
-  value       = aws_iam_role.this.arn
-}
-
-output "package_bytes" {
-  description = "Size of the deployment zip."
-  value       = data.archive_file.package.output_size
+output "schedules" {
+  description = "Each schedule's expression and the event it sends."
+  value = {
+    for k, r in aws_cloudwatch_event_rule.this :
+    k => { expression = r.schedule_expression, event = aws_cloudwatch_event_target.this[k].input }
+  }
 }

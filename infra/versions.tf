@@ -24,7 +24,8 @@ provider "aws" {
   secret_key                  = var.plan_without_credentials ? "plan-only" : null
   skip_credentials_validation = var.plan_without_credentials
   skip_requesting_account_id  = var.plan_without_credentials
-  skip_metadata_api_check     = var.plan_without_credentials
+  # Otherwise null, not false: the provider's default (and AWS_EC2_METADATA_DISABLED) decide.
+  skip_metadata_api_check = var.plan_without_credentials ? true : null
 
   default_tags {
     tags = {

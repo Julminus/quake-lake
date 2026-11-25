@@ -1,6 +1,7 @@
-# Offline tests of the modules' logic: `terraform test` from infra/. The AWS provider is
-# mocked, so "apply" here creates nothing anywhere: computed attributes (ARNs, bucket
-# names) get made-up values and the assertions read the configuration Terraform built.
+# Offline tests: `terraform test` from infra/. The AWS provider is mocked, so "apply" here
+# creates nothing anywhere: computed attributes (ARNs, bucket names) get made-up values
+# and the assertions read what Terraform built. The policies are compared whole, so any
+# widening (an extra action, a wildcard, a lost condition) fails a test.
 
 mock_provider "aws" {
   # The provider checks that these are ARNs where another resource takes them as input.
@@ -14,7 +15,7 @@ mock_provider "aws" {
     defaults = { arn = "arn:aws:events:ap-southeast-1:123456789012:rule/test" }
   }
   mock_resource "aws_glue_catalog_database" {
-    defaults = { catalog_id = "123456789012" }
+    defaults = { arn = "arn:aws:glue:ap-southeast-1:123456789012:database/test_lake" }
   }
 }
 
@@ -55,6 +56,10 @@ run "a_plain_bucket_is_private_and_tls_only" {
     condition     = [for r in aws_s3_bucket_lifecycle_configuration.this.rule : r.id] == ["abort-incomplete-uploads"]
     error_message = "A plain bucket only cleans up unfinished uploads; nothing expires."
   }
+  assert {
+    condition     = aws_s3_bucket_lifecycle_configuration.this.rule[0].abort_incomplete_multipart_upload[0].days_after_initiation == 1
+    error_message = "Unfinished uploads are cleaned up after a day."
+  }
 }
 
 run "a_versioned_expiring_bucket_gets_both_rules" {
@@ -79,8 +84,11 @@ run "a_versioned_expiring_bucket_gets_both_rules" {
     error_message = "Expected the upload, old-version and expiry rules, in that order."
   }
   assert {
-    condition     = aws_s3_bucket_lifecycle_configuration.this.rule[1].noncurrent_version_expiration[0].noncurrent_days == 30
-    error_message = "Old versions are kept 30 days by default."
+    condition = (
+      aws_s3_bucket_lifecycle_configuration.this.rule[1].noncurrent_version_expiration[0].noncurrent_days == 30
+      && aws_s3_bucket_lifecycle_configuration.this.rule[1].expiration[0].expired_object_delete_marker
+    )
+    error_message = "Old versions are kept 30 days, and then their delete markers go too."
   }
   assert {
     condition     = aws_s3_bucket_lifecycle_configuration.this.rule[2].expiration[0].days == 7
@@ -104,16 +112,31 @@ run "the_ingest_role_can_only_write_bronze_and_its_logs" {
       daily  = { expression = "cron(0 0 * * ? *)", event = "{\"days\":7,\"sources\":[\"usgs\"]}" }
     }
   }
+  # Distinct ARNs per rule, so a permission or target wired to the wrong rule fails.
+  override_resource {
+    target = aws_cloudwatch_event_rule.this["hourly"]
+    values = { arn = "arn:aws:events:ap-southeast-1:123456789012:rule/test-ingest-hourly" }
+  }
+  override_resource {
+    target = aws_cloudwatch_event_rule.this["daily"]
+    values = { arn = "arn:aws:events:ap-southeast-1:123456789012:rule/test-ingest-daily" }
+  }
 
   assert {
-    condition     = jsondecode(aws_iam_role_policy.this.policy).Statement[*].Action == ["s3:PutObject", ["logs:CreateLogStream", "logs:PutLogEvents"]]
-    error_message = "The role may put objects and write logs, nothing else (no read, list or delete)."
+    condition = jsondecode(aws_iam_role_policy.this.policy).Statement == [
+      { Sid = "WriteBronze", Effect = "Allow", Action = "s3:PutObject", Resource = "arn:aws:s3:::test-bronze/*" },
+      {
+        Sid      = "WriteOwnLogs"
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.this.arn}:*"
+      },
+    ]
+    error_message = "The role may put objects into bronze and write its own logs, nothing else."
   }
   assert {
-    condition = jsondecode(aws_iam_role_policy.this.policy).Statement[*].Resource == [
-      "arn:aws:s3:::test-bronze/*", "${aws_cloudwatch_log_group.this.arn}:*",
-    ]
-    error_message = "Writes are limited to the bronze bucket and the function's own log group."
+    condition     = jsondecode(aws_iam_role.this.assume_role_policy).Statement[*].Principal == [{ Service = "lambda.amazonaws.com" }]
+    error_message = "Only Lambda may assume the role."
   }
   assert {
     condition     = aws_lambda_function.this.environment[0].variables == tomap({ BRONZE_URI = "s3://test-bronze" })
@@ -128,12 +151,25 @@ run "the_ingest_role_can_only_write_bronze_and_its_logs" {
     error_message = "The function logs to the group Terraform creates (with a retention), not one Lambda would make."
   }
   assert {
-    condition     = { for k, t in aws_cloudwatch_event_target.this : k => t.input } == { for k, s in var.schedules : k => s.event }
-    error_message = "Each schedule must send its own event."
+    condition     = aws_lambda_function_event_invoke_config.this.maximum_retry_attempts == 0
+    error_message = "A failed invocation isn't retried: the next scheduled poll is the retry."
   }
   assert {
-    condition = alltrue([for k, p in aws_lambda_permission.this :
-    p.source_arn == aws_cloudwatch_event_rule.this[k].arn && p.principal == "events.amazonaws.com"])
+    condition = { for k, t in aws_cloudwatch_event_target.this : k => [t.rule, t.arn, t.input] } == {
+      for k, s in var.schedules : k => [aws_cloudwatch_event_rule.this[k].name, aws_lambda_function.this.arn, s.event]
+    }
+    error_message = "Each rule must invoke the function with its own schedule's event."
+  }
+  assert {
+    condition = { for k, r in aws_cloudwatch_event_rule.this : k => r.schedule_expression } == {
+      for k, s in var.schedules : k => s.expression
+    }
+    error_message = "Each rule runs on its own schedule."
+  }
+  assert {
+    condition = { for k, p in aws_lambda_permission.this : k => [p.source_arn, p.principal, p.action] } == {
+      for k, r in aws_cloudwatch_event_rule.this : k => [r.arn, "events.amazonaws.com", "lambda:InvokeFunction"]
+    }
     error_message = "Each rule, and only EventBridge, may invoke the function."
   }
 }
@@ -145,12 +181,11 @@ run "the_catalog_reads_silver_and_the_query_policy_is_scoped" {
   }
   variables {
     database           = "test_lake"
-    region             = "ap-southeast-1"
     silver_bucket      = "test-silver"
     silver_bucket_arn  = "arn:aws:s3:::test-silver"
     results_bucket     = "test-results"
     results_bucket_arn = "arn:aws:s3:::test-results"
-    silver_years       = [2015, 2040]
+    silver_years       = [2015, 2035]
   }
 
   assert {
@@ -158,14 +193,14 @@ run "the_catalog_reads_silver_and_the_query_policy_is_scoped" {
     error_message = "The table reads silver's events/ folder."
   }
   assert {
-    condition     = aws_glue_catalog_table.silver_events.partition_keys[*].name == tolist(["year", "month"])
-    error_message = "Partitions are silver's year=/month= folders, in that order."
+    condition     = [for k in aws_glue_catalog_table.silver_events.partition_keys : [k.name, k.type]] == [["year", "int"], ["month", "int"]]
+    error_message = "Partitions are silver's year=/month= folders, in that order, as integers."
   }
   assert {
     condition = { for k, v in aws_glue_catalog_table.silver_events.parameters : k => v if startswith(k, "projection.") } == {
       "projection.enabled"      = "true"
       "projection.year.type"    = "integer"
-      "projection.year.range"   = "2015,2040"
+      "projection.year.range"   = "2015,2035"
       "projection.month.type"   = "integer"
       "projection.month.range"  = "1,12"
       "projection.month.digits" = "2"
@@ -173,41 +208,108 @@ run "the_catalog_reads_silver_and_the_query_policy_is_scoped" {
     error_message = "Partition projection must cover silver_years and every zero-padded month."
   }
   assert {
-    condition     = aws_athena_workgroup.this.configuration[0].result_configuration[0].output_location == "s3://test-results/"
-    error_message = "Query results go to the results bucket."
+    condition = (
+      aws_athena_workgroup.this.configuration[0].result_configuration[0].output_location == "s3://test-results/"
+      && aws_athena_workgroup.this.configuration[0].enforce_workgroup_configuration
+      && aws_athena_workgroup.this.configuration[0].bytes_scanned_cutoff_per_query == 1000000000
+    )
+    error_message = "Results go to the results bucket, a query stops at 1 GB, and clients can't override either."
   }
   assert {
-    condition     = aws_athena_workgroup.this.configuration[0].enforce_workgroup_configuration
-    error_message = "Clients must not be able to override the result location or the scan cutoff."
-  }
-  assert {
-    condition = flatten(jsondecode(aws_iam_policy.query.policy).Statement[*].Resource) == [
-      aws_athena_workgroup.this.arn,
-      "arn:aws:glue:ap-southeast-1:${aws_glue_catalog_database.this.catalog_id}:catalog",
-      aws_glue_catalog_database.this.arn,
-      "arn:aws:glue:ap-southeast-1:${aws_glue_catalog_database.this.catalog_id}:table/test_lake/*",
-      "arn:aws:s3:::test-silver",
-      "arn:aws:s3:::test-silver/events/*",
-      "arn:aws:s3:::test-results",
-      "arn:aws:s3:::test-results/*",
+    condition = jsondecode(aws_iam_policy.query.policy).Statement == [
+      {
+        Sid    = "RunQueries"
+        Effect = "Allow"
+        Action = [
+          "athena:GetWorkGroup", "athena:StartQueryExecution", "athena:StopQueryExecution",
+          "athena:GetQueryExecution", "athena:GetQueryResults", "athena:ListQueryExecutions",
+        ]
+        Resource = aws_athena_workgroup.this.arn
+      },
+      {
+        Sid    = "ReadCatalog"
+        Effect = "Allow"
+        Action = ["glue:GetDatabase", "glue:GetTable", "glue:GetTables", "glue:GetPartitions"]
+        Resource = [
+          "arn:aws:glue:ap-southeast-1:123456789012:catalog",
+          "arn:aws:glue:ap-southeast-1:123456789012:database/default",
+          "arn:aws:glue:ap-southeast-1:123456789012:database/test_lake",
+          "arn:aws:glue:ap-southeast-1:123456789012:table/test_lake/*",
+        ]
+      },
+      {
+        Sid       = "ListSilverEvents"
+        Effect    = "Allow"
+        Action    = "s3:ListBucket"
+        Resource  = "arn:aws:s3:::test-silver"
+        Condition = { StringLike = { "s3:prefix" = ["events/*"] } }
+      },
+      { Sid = "ReadSilverEvents", Effect = "Allow", Action = "s3:GetObject", Resource = "arn:aws:s3:::test-silver/events/*" },
+      {
+        Sid      = "ListQueryResults"
+        Effect   = "Allow"
+        Action   = ["s3:GetBucketLocation", "s3:ListBucket"]
+        Resource = "arn:aws:s3:::test-results"
+      },
+      {
+        Sid      = "WriteQueryResults"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"]
+        Resource = "arn:aws:s3:::test-results/*"
+      },
     ]
-    error_message = "The query policy reaches this workgroup, this database, silver's events and the results bucket only."
-  }
-  assert {
-    condition     = !anytrue([for s in jsondecode(aws_iam_policy.query.policy).Statement : contains(flatten([s.Action]), "s3:PutObject") && s.Resource != "arn:aws:s3:::test-results/*"])
-    error_message = "Querying may write only to the results bucket, never to silver."
+    error_message = "The query policy reaches this workgroup, this database, silver's events (read only) and the results bucket, nothing else."
   }
 }
 
-run "the_whole_configuration_plans" {
-  command = plan
+run "the_whole_configuration" {
+  command = apply
 
+  assert {
+    condition = jsondecode(aws_iam_policy.pipeline.policy).Statement == [
+      { Sid = "ListLake", Effect = "Allow", Action = "s3:ListBucket", Resource = [module.bronze.arn, module.silver.arn] },
+      { Sid = "ReadBronze", Effect = "Allow", Action = "s3:GetObject", Resource = "${module.bronze.arn}/*" },
+      {
+        Sid      = "RewriteSilver"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "${module.silver.arn}/*"
+      },
+    ]
+    error_message = "The pipeline may read bronze and rewrite silver, nothing else."
+  }
+  assert {
+    condition     = [module.bronze.versioned, module.silver.versioned, module.gold.versioned, module.athena_results.versioned] == [true, false, false, false]
+    error_message = "Bronze, the only copy of BMKG's snapshots, keeps old versions; the rest can be rebuilt."
+  }
+  assert {
+    condition = (
+      output.ingest.schedules.bmkg.expression == "rate(1 hour)"
+      && jsondecode(output.ingest.schedules.bmkg.event) == { sources = ["bmkg"] }
+    )
+    error_message = "BMKG's feeds only hold the latest events: poll them every hour, BMKG only."
+  }
+  assert {
+    condition = (
+      output.ingest.schedules.usgs.expression == "cron(0 0 * * ? *)"
+      && jsondecode(output.ingest.schedules.usgs.event) == { sources = ["usgs"], days = 7 }
+    )
+    error_message = "USGS once a day, 7 days back (the handler's look-back)."
+  }
+  assert {
+    condition     = keys(output.ingest.schedules) == ["bmkg", "usgs"]
+    error_message = "Two schedules, no more."
+  }
+  assert {
+    condition = (
+      output.ingest.function.memory_mb == 256
+      && output.ingest.function.timeout_s == 300
+      && output.ingest.function.log_retention_days == 30
+    )
+    error_message = "256 MB (measured: docs/results/lambda-s11.log), a 5-minute cap, 30 days of logs."
+  }
   assert {
     condition     = output.athena == { database = "quake_lake", workgroup = "quake-lake" }
     error_message = "Athena names come from var.name, with an underscore for Glue."
-  }
-  assert {
-    condition     = output.ingest_function == "quake-lake-ingest"
-    error_message = "The function is named after var.name."
   }
 }

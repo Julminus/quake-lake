@@ -51,18 +51,19 @@ module "ingest" {
 module "catalog" {
   source             = "./modules/catalog"
   database           = replace(var.name, "-", "_")
-  region             = var.region
   silver_bucket      = module.silver.bucket
   silver_bucket_arn  = module.silver.arn
   results_bucket     = module.athena_results.bucket
   results_bucket_arn = module.athena_results.arn
   # shortcut: Athena only sees these years of silver; widen it before backfilling earlier
-  # or once 2040 is near (more years cost more S3 listing per unfiltered query).
-  silver_years = [2015, 2040]
+  # or before 2035. AWS advises against projection when over half the projected
+  # partitions are empty: 109 of these 252 months are, today. Each year more costs
+  # 12 more S3 LISTs per query without a year filter.
+  silver_years = [2015, 2035]
 }
 
-# For whoever builds silver (`quake-lake silver`, or the Airflow stack pointed at AWS):
-# read bronze, rewrite silver. Attach it to that user or role.
+# For whoever builds silver (`quake-lake silver` with AWS credentials): read bronze,
+# rewrite silver. Attach it to that user or role.
 resource "aws_iam_policy" "pipeline" {
   name        = "${var.name}-pipeline"
   description = "Build quake-lake's silver from bronze."

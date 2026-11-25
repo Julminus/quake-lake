@@ -9,8 +9,8 @@ variable "name" {
   type        = string
   default     = "quake-lake"
   validation {
-    # Lowercase for bucket names; 20 characters keeps "<name>-athena-" within S3's
-    # 37-character limit for a bucket_prefix.
+    # Lowercase for bucket names; 20 characters keeps "<name>-athena-" within the AWS
+    # provider's 37-character limit for a bucket_prefix (63 minus its 26-character suffix).
     condition     = can(regex("^[a-z][a-z0-9-]{0,19}$", var.name))
     error_message = "Use 1 to 20 lowercase letters, digits or hyphens, starting with a letter."
   }

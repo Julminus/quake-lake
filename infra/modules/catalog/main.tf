@@ -17,11 +17,6 @@ variable "database" {
   type        = string
 }
 
-variable "region" {
-  description = "AWS region of the catalog, for its ARNs."
-  type        = string
-}
-
 variable "silver_bucket" {
   description = "Bucket silver is written to (its SILVER_URI is s3://<bucket>)."
   type        = string
@@ -121,8 +116,8 @@ resource "aws_athena_workgroup" "this" {
 }
 
 locals {
-  # The catalog's id is the account id, known once the database exists.
-  glue_arn = "arn:aws:glue:${var.region}:${aws_glue_catalog_database.this.catalog_id}"
+  # "arn:<partition>:glue:<region>:<account>", from the database's own ARN.
+  glue_arn = split(":database/", aws_glue_catalog_database.this.arn)[0]
 }
 
 # For whoever queries silver with Athena: this workgroup, this table, silver's events
@@ -143,10 +138,16 @@ resource "aws_iam_policy" "query" {
         Resource = aws_athena_workgroup.this.arn
       },
       {
-        Sid      = "ReadCatalog"
-        Effect   = "Allow"
-        Action   = ["glue:GetDatabase", "glue:GetTable", "glue:GetTables", "glue:GetPartitions"]
-        Resource = ["${local.glue_arn}:catalog", aws_glue_catalog_database.this.arn, "${local.glue_arn}:table/${var.database}/*"]
+        Sid    = "ReadCatalog"
+        Effect = "Allow"
+        Action = ["glue:GetDatabase", "glue:GetTable", "glue:GetTables", "glue:GetPartitions"]
+        # AWS's example Athena policies grant the `default` database too (read only here).
+        Resource = [
+          "${local.glue_arn}:catalog",
+          "${local.glue_arn}:database/default",
+          aws_glue_catalog_database.this.arn,
+          "${local.glue_arn}:table/${var.database}/*",
+        ]
       },
       {
         Sid       = "ListSilverEvents"
