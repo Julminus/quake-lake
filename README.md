@@ -213,10 +213,11 @@ fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
 - **MinIO:** with the image pulled, `docker compose up -d --wait minio` is healthy in 2.3 to
   2.4 s. The CLI's image is 1,183 MB since gold (233 MB with bronze only, 688 MB with
   silver): pyarrow alone is 170 MB, and dbt brings DuckDB (66 MB), Babel (33 MB) and more.
-- **Tests:** 202 offline tests (recorded responses and small built records; one concurrency
+- **Tests:** 208 offline tests (recorded responses and small built records; one concurrency
   test runs on Linux only) at 100% branch coverage of the Python package (CI fails below
-  90%), in 13.9 to 15.9 s (three runs); 5 of them run dbt (about 10 s of that), and 2 check
-  that the Glue table in `infra/` matches silver's schema. 12 test the
+  90%), in 13.8 to 15.6 s (three runs); 5 of them run dbt (about 10 s of that), and 8 check
+  `infra/` from Python (the Glue table matches silver's schema; the cost estimate reads the
+  right numbers from the Terraform). 12 test the
   Airflow DAG and need Airflow, so they skip outside its image and CI runs them inside it.
   Two more run against a real MinIO (a storage round trip and a silver rebuild); CI runs
   them too. The Terraform has 5 tests of its own (above).

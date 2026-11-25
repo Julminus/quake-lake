@@ -24,8 +24,9 @@ Indonesia, Docker 29.9.3. The README quotes these files.
 
 - **Test suite, S11:** `uv run pytest -q -p no:cacheprovider`, three runs (the compose
   stack's MinIO was running, which the tests don't use without `QUAKE_LAKE_MINIO=1`):
-  15.89, 13.88 and 13.95 s, 189 passed and 15 skipped on Windows (2 more than S10: the Glue
-  column checks in `tests/test_infra.py`).
+  15.61, 13.91 and 13.84 s, 195 passed and 15 skipped on Windows (8 more than S10, all in
+  `tests/test_infra.py`: the Glue columns and the cost estimate's parser). Before the
+  review rounds added 6 of them: 15.89, 13.88 and 13.95 s.
 - **Terraform, S11:** `make infra-check` 6.9 to 8.5 s and `make plan` 3.1 s on this PC
   (three runs each, after the review's fixes) once `infra/` is initialised (`terraform
   plan` alone 2.0 s); the first `terraform init`
