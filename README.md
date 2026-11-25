@@ -43,12 +43,13 @@ connection in Indonesia). Where each number comes from, and how to re-run it, is
   inside the free 100 GB of transfer); the biggest line is Athena considering partitions
   that don't exist yet (an assumed S3 LIST each). Details and assumptions:
   [`docs/aws-cost-estimate.md`](docs/aws-cost-estimate.md).
-- **256 MB for the Lambda: half the cold start of 128 MB, for a fraction of a cent.** The
+- **256 MB for the Lambda: half the start-up time of 128 MB, for a fraction of a cent.** The
   handler's process peaks at 51.3 MiB, but Lambda's CPU grows with memory. Emulating 256 MB's
   share of a CPU (`docker --cpus 0.1447` on AWS's Lambda image, on this PC's CPU, not AWS's),
   a cold start was 0.81 to 0.91 s of init and a 2.4 to 3.5 s first invocation (three BMKG
-  feeds and 7 days of USGS into MinIO); at 128 MB, 1.75 to 1.86 s and 4.0 to 4.2 s
-  ([`lambda-s11.log`](docs/results/lambda-s11.log)). 128 MB would bill fewer GB-seconds
+  feeds and 7 days of USGS into MinIO), 3.3 to 4.4 s in all; at 128 MB, 1.75 to 1.86 s and
+  4.0 to 4.2 s, 5.8 to 6.0 s in all ([`lambda-s11.log`](docs/results/lambda-s11.log)).
+  128 MB would bill fewer GB-seconds
   (0.76 against 1.09 for the slowest cold start, about $0.004 a month less); for an hourly
   poll either is fine, and I took the faster one.
 - **Checks:** `terraform fmt`, `terraform validate`, `tflint` with the AWS ruleset on the
@@ -58,13 +59,16 @@ connection in Indonesia). Where each number comes from, and how to re-run it, is
   compared whole (an ingest role that can only put objects into bronze and write its own
   logs, a pipeline policy that reads bronze and rewrites silver, a query policy limited to
   silver's events and the results bucket), each schedule's rule, event and permission, the
-  memory, timeout and retries, and the Glue table's location, partition types and
-  projection. To see that the checks have teeth, `scripts/mutate_infra.py` plants 36 bugs
-  one at a time (wider permissions, wrong wiring, a lost condition, an hourly schedule made
-  daily, ...): 35 fail a test; the one left is the projection's year range, a setting
-  ([`mutations-s11.txt`](docs/results/mutations-s11.txt)). A first version of the tests let
-  13 of 14 of a reviewer's mutations through. CI runs all of it, plus the plan, on every push
-  to `main` and every pull request; `make infra-check` locally (7 to 8.5 s).
+  memory, timeout and retries, the Glue table's location, format, partition types and
+  projection, and the wiring between modules (the Lambda writes bronze, Athena reads silver
+  and writes results). To see that the checks have teeth, `scripts/mutate_infra.py` plants
+  48 bugs one at a time (wider permissions, a module given the wrong bucket, a lost
+  condition, an hourly schedule made daily, ...): 47 fail a test; the one left is the
+  projection's year range, a setting
+  ([`mutations-s11.txt`](docs/results/mutations-s11.txt)). Two reviews got there: the first
+  version of the tests let 13 of 14 of a reviewer's mutations through, the second missed the
+  root's wiring. CI runs all of it, plus the plan, on every push to `main` and every pull
+  request; `make infra-check` locally (7 to 8.5 s).
 
 ### Airflow
 
@@ -669,13 +673,14 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   for now.
 - **One function, two schedules.** EventBridge invokes it hourly for BMKG and daily for
   USGS, each with its own event, so a stalled USGS request can't make an hourly BMKG poll
-  late. EventBridge invokes it asynchronously, and Lambda's default would retry a failed
-  invocation twice; here it doesn't retry. `fetch()` already retries each request, the
-  handler fails only after writing every feed that worked (a retry would write those
-  again), and the next poll comes anyway: BMKG within the hour, USGS the next day with a
-  7-day look-back. Failures show in the function's errors and logs. The 5-minute timeout is
-  the cap on a stalled request (see "BMKG must be polled often, and first"); a run takes
-  about 1 to 4 s.
+  late. EventBridge invokes it asynchronously, and a failed invocation is retried twice,
+  about 1 and 3 minutes later (Lambda's default, set explicitly so a test holds it).
+  `fetch()`'s own retries span about 7 s; these outlast a short BMKG outage, and BMKG's
+  feeds forget. The cost: the handler fails only after writing every feed that worked, so
+  a retry writes those again (about 10 KB; silver drops the repeats). A first version
+  turned retries off to avoid that; a review pointed out it traded a lost snapshot for
+  10 KB. The 5-minute timeout is the cap on a stalled request (see "BMKG must be polled
+  often, and first"); a run takes about 1 to 4 s.
 - **Partition projection, not a crawler.** The Glue table computes silver's
   `year=/month=` partitions from its properties, so a new month needs no crawler run and no
   `MSCK REPAIR TABLE`. The cost is the range: Athena sees 2015 to 2035 (`silver_years`),
@@ -689,7 +694,9 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   mocked provider returns made-up JSON, so the tests couldn't read what a policy grants;
   as plain JSON they can, and they compare each policy whole. AWS still checks the
   grammar on apply. The query policy also reads the `default` Glue database, as AWS's
-  example Athena policies do.
+  example Athena policies do; those examples also grant `glue:GetDatabases` and
+  `glue:CreateDatabase`, which an account without a `default` database may need (not
+  checked: that takes an apply).
 - **Bucket names come from `bucket_prefix`.** S3 names are global, so Terraform appends a
   unique suffix and two deployments can't collide; the outputs print the names. Replacing a
   bucket would change its name.

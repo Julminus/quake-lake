@@ -80,8 +80,7 @@ them.
 - **Nothing runs by the hour.** No NAT gateway (the function isn't in a VPC: it needs the
   public internet and S3, and a NAT gateway is billed for every hour it exists, more than
   everything above together), no KMS keys (SSE-S3), no crawler (partition projection), no
-  always-on compute. A failed invocation isn't retried by Lambda, so a BMKG outage doesn't
-  triple the hourly writes.
+  always-on compute.
 
 ## Not counted
 
@@ -89,6 +88,8 @@ them.
   the EventBridge price list (it prices custom, partner and cross-account events, Pipes and
   EventBridge Scheduler); at the custom-event price, $1.00 per million, they would cost
   $0.00075.
+- **Retries:** a failed invocation is retried up to twice; when only some feeds failed, each
+  retry writes the others again (up to about 10 KB and 3 PUTs, $0.000015).
 - **Old versions in bronze:** bronze keys are written once, except a backfill re-run on
   the same UTC day, which overwrites its 143 objects; the 19 MB of old versions stay 30 days.
 - **A Terraform state bucket**, once state moves to S3 (a few KB), and tax.

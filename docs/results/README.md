@@ -16,7 +16,7 @@ Indonesia, Docker 29.9.3. The README quotes these files.
 | `deadline-s10.log` | The deadline alert firing: the scheduler's two log lines for a manual run whose deadline was set to 1 s after it was queued | by hand: `interval=timedelta(seconds=1)` in `dags/quake_lake_daily.py` (the committed value is 1 hour), a run triggered through the REST API, `docker compose logs airflow-scheduler`; the file's header says which lines |
 | `lambda-s11.log` | What the ingest Lambda needs, in `public.ecr.aws/lambda/python:3.12` (pinned by digest) writing to the MinIO from `compose.yaml`, at 18:09 UTC on 2026-11-25: the peak memory (`ru_maxrss`) of the handler's process after a BMKG poll, then a 7-day USGS fetch, then both, in one process (so each value is the peak so far, not the event's own); then, for 128, 256 and 512 MB, three cold starts and one warm invocation each (`{}`: both sources) under the Lambda emulator with `docker --cpus` set to the CPU share Lambda gives that memory (MB / 1,769). Raw emulator lines; their own "Memory Size" and "Max Memory Used" (3008 MB) are the emulator's defaults, not measurements. The network to BMKG and USGS adds noise (warm invocations 0.95 to 3.1 s) | `make minio`, then `bash scripts/measure_lambda.sh > docs/results/lambda-s11.log` |
 | `plan-s11.txt` | `terraform plan` of `infra/` with no AWS account (`-var plan_without_credentials=true`): 33 resources (32 before the review added the Lambda's retry setting). The same bytes on Windows and in `hashicorp/terraform:1.17.1` on Linux (compared with `diff`), including the Lambda zip's `source_code_hash` | `make plan`, or the command in the file's first line |
-| `mutations-s11.txt` | 36 bugs planted in `infra/` one at a time (each module's permissions, wiring, schedules, settings and lifecycle rules, and the root's), with whether `terraform test` failed on each: 35 of 36 did; the one that didn't is the projection's year range | `uv run python scripts/mutate_infra.py > docs/results/mutations-s11.txt` (55 s; `infra/` initialised first) |
+| `mutations-s11.txt` | 48 bugs planted in `infra/` one at a time (each module's permissions, wiring, schedules, settings, formats and lifecycle rules; the root's settings and which bucket each module gets), with whether a `terraform test` run failed on each (the unmutated tests pass first): 47 of 48 did; the one that didn't is the projection's year range | `uv run python scripts/mutate_infra.py > docs/results/mutations-s11.txt` (75 s; `infra/` initialised first) |
 | `aws-cost-s11.json` | The monthly AWS cost of `infra/` for months 1 and 12, from the AWS Price List bulk API for `ap-southeast-1` (each price with its source URL and publication date), the usage measured in `lambda-s11.log`, `backfill-s7.json` and `silver-s8.json`, and the assumptions in the file | `uv run python scripts/aws_cost.py` (downloads about 3 MB of price lists); explained in [`../aws-cost-estimate.md`](../aws-cost-estimate.md) |
 | `lambda-s7.log` | Three cold starts of the handler in `public.ecr.aws/lambda/python:3.12` under its local emulator, one live invocation each (`{"days": 2}`: three BMKG feeds and two days of USGS), with the emulator's raw `INIT REPORT` / `REPORT` lines and the handler's log | `docker run` with `src/` mounted at `/var/task`, then a `curl` to the invocation URL, as in the CI `docker` job |
 
@@ -34,7 +34,11 @@ Indonesia, Docker 29.9.3. The README quotes these files.
   at a time, 11 made `terraform test` fail, but of 14 more a reviewer planted (permissions
   wired to the wrong rule, `s3:*` or `glue:*` in a policy, a lost condition, the pipeline
   policy, partition key types, ...), 13 passed. The tests were rewritten to compare every
-  policy whole; `mutations-s11.txt` is the result.
+  policy whole; then a second reviewer's 24 mutations found the root's wiring untested (the
+  Lambda given silver instead of bronze, say) and `mutate_infra.py` counting a Terraform
+  that couldn't run as 36 catches. Modules now take whole bucket modules, the wiring is
+  asserted through outputs, and the script needs the unmutated tests to pass first;
+  `mutations-s11.txt` is the result.
 
 - **gzip, interleaved:** the 12 monthly windows of 2018, fetched 3 times in each mode,
   alternating plain and gzip so network drift hits both (36 requests each): median request
