@@ -92,7 +92,7 @@ infra-check:
 	terraform -chdir=infra fmt -check -recursive
 	terraform -chdir=infra validate
 	tflint --chdir=infra --init
-	tflint --chdir=infra --recursive --config=$(CURDIR)/infra/.tflint.hcl
+	tflint --chdir=infra --recursive --config="$(CURDIR)/infra/.tflint.hcl"
 	terraform -chdir=infra test
 
 plan:
