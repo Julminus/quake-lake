@@ -43,7 +43,7 @@ connection in Indonesia). Where each number comes from, and how to re-run it, is
   inside the free 100 GB of transfer); the biggest line is Athena considering partitions
   that don't exist yet (an assumed S3 LIST each). Details and assumptions:
   [`docs/aws-cost-estimate.md`](docs/aws-cost-estimate.md).
-- **256 MB for the Lambda: half the start-up time of 128 MB, for a fraction of a cent.** The
+- **256 MB for the Lambda: half the init time of 128 MB, for a fraction of a cent.** The
   handler's process peaks at 51.3 MiB, but Lambda's CPU grows with memory. Emulating 256 MB's
   share of a CPU (`docker --cpus 0.1447` on AWS's Lambda image, on this PC's CPU, not AWS's),
   a cold start was 0.81 to 0.91 s of init and a 2.4 to 3.5 s first invocation (three BMKG
@@ -697,6 +697,11 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   example Athena policies do; those examples also grant `glue:GetDatabases` and
   `glue:CreateDatabase`, which an account without a `default` database may need (not
   checked: that takes an apply).
+- **Modules take whole bucket modules** (`bronze = module.bronze`), so a call can't pair one
+  bucket's name with another's ARN by mistake, and the tests check through outputs which
+  bucket each module got. The cost: a module now waits for everything in its bucket module
+  (the bucket policy and lifecycle rules too) before it is created, so an apply is a little
+  more sequential, and a bucket module could never take an input from them without a cycle.
 - **Bucket names come from `bucket_prefix`.** S3 names are global, so Terraform appends a
   unique suffix and two deployments can't collide; the outputs print the names. Replacing a
   bucket would change its name.

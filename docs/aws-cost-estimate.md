@@ -88,8 +88,10 @@ them.
   the EventBridge price list (it prices custom, partner and cross-account events, Pipes and
   EventBridge Scheduler); at the custom-event price, $1.00 per million, they would cost
   $0.00075.
-- **Retries:** a failed invocation is retried up to twice; when only some feeds failed, each
-  retry writes the others again (up to about 10 KB and 3 PUTs, $0.000015).
+- **Retries:** a failed invocation is retried up to twice. Each retry is another invocation
+  (about $0.00002 at the cold start above; a USGS request stalled until the 5-minute
+  timeout, $0.0013), and when only some feeds failed it writes the others again (up to
+  about 10 KB and 3 PUTs, $0.000015).
 - **Old versions in bronze:** bronze keys are written once, except a backfill re-run on
   the same UTC day, which overwrites its 143 objects; the 19 MB of old versions stay 30 days.
 - **A Terraform state bucket**, once state moves to S3 (a few KB), and tax.
