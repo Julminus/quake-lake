@@ -32,7 +32,7 @@ if command -v terraform > /dev/null; then
   echo "${out##*$'\n'}"  # the summary line
   if command -v tflint > /dev/null; then
     tflint --chdir=infra --init > /dev/null
-    tflint --chdir=infra --recursive
+    tflint --chdir=infra --recursive --config="$PWD/infra/.tflint.hcl"  # absolute: modules too
   fi
 fi
 echo "staged tree OK"

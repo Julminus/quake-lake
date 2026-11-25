@@ -85,12 +85,14 @@ docker:
 	docker build -t quake-lake:dev .
 
 # Terraform and tflint must be installed. Nothing here needs AWS credentials or applies.
+# tflint --recursive reads a .tflint.hcl per folder; an absolute --config gives the
+# modules the AWS ruleset too.
 infra-check:
 	terraform -chdir=infra init -input=false
 	terraform -chdir=infra fmt -check -recursive
 	terraform -chdir=infra validate
 	tflint --chdir=infra --init
-	tflint --chdir=infra --recursive
+	tflint --chdir=infra --recursive --config=$(CURDIR)/infra/.tflint.hcl
 	terraform -chdir=infra test
 
 plan:

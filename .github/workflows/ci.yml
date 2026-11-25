@@ -127,7 +127,9 @@ jobs:
       - name: tflint (with the AWS ruleset)
         run: |
           tflint --init
-          tflint --recursive --format compact
+          # --recursive reads each folder's own .tflint.hcl; an absolute --config gives the
+          # modules (where the resources are) the AWS ruleset too.
+          tflint --recursive --format compact --config "$PWD/.tflint.hcl"
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: terraform test (mocked AWS provider)
