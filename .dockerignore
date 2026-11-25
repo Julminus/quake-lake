@@ -18,3 +18,5 @@ CLAUDE.md
 transform/target
 transform/logs
 .scratch
+# Terraform (its .terraform/ holds the AWS provider, hundreds of MB); no image needs it
+infra

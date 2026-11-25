@@ -23,4 +23,16 @@ uv run --frozen ruff format --check .
 uv run --frozen mypy
 uv run --frozen pytest -q --cov --cov-report=term-missing:skip-covered
 uv run --frozen quake-lake --help > /dev/null
+# Terraform (infra/), when it is installed; CI runs these on every push either way.
+if command -v terraform > /dev/null; then
+  terraform -chdir=infra init -input=false -lockfile=readonly > /dev/null
+  terraform -chdir=infra fmt -check -recursive
+  terraform -chdir=infra validate -no-color > /dev/null
+  out="$(terraform -chdir=infra test -no-color)" || { echo "$out"; exit 1; }
+  echo "${out##*$'\n'}"  # the summary line
+  if command -v tflint > /dev/null; then
+    tflint --chdir=infra --init > /dev/null
+    tflint --chdir=infra --recursive
+  fi
+fi
 echo "staged tree OK"

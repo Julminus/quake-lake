@@ -1,0 +1,18 @@
+[
+  {"name": "event_id", "type": "string"},
+  {"name": "source", "type": "string"},
+  {"name": "time", "type": "timestamp"},
+  {"name": "latitude", "type": "double"},
+  {"name": "longitude", "type": "double"},
+  {"name": "depth_km", "type": "double"},
+  {"name": "magnitude", "type": "double"},
+  {"name": "mag_type", "type": "string"},
+  {"name": "place", "type": "string"},
+  {"name": "event_type", "type": "string"},
+  {"name": "updated", "type": "timestamp"},
+  {"name": "bmkg_id", "type": "string"},
+  {"name": "province_code", "type": "string"},
+  {"name": "province", "type": "string"},
+  {"name": "province_km", "type": "double"},
+  {"name": "bronze_key", "type": "string"}
+]

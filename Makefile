@@ -9,7 +9,7 @@ SINCE ?= 2015-01-01
 export DBT_PROJECT_DIR := transform
 export DBT_PROFILES_DIR := transform
 
-.PHONY: help setup lint format typecheck test run backfill silver gold freshness docs minio minio-run airflow docker clean
+.PHONY: help setup lint format typecheck test run backfill silver gold freshness docs minio minio-run airflow docker infra-check plan clean
 
 help:
 	@echo "setup      install deps (+ pre-commit hooks once .pre-commit-config.yaml exists)"
@@ -27,6 +27,8 @@ help:
 	@echo "minio-run  bronze and silver as in run, inside a container, into s3://lake/ on MinIO"
 	@echo "airflow    MinIO + Airflow (http://127.0.0.1:8080); the daily DAG runs the whole pipeline"
 	@echo "docker     build the CLI image"
+	@echo "infra-check  Terraform in infra/: fmt, validate, tflint, terraform test (offline)"
+	@echo "plan       terraform plan of the AWS deployment, with no AWS account (never applied)"
 
 setup:
 	uv sync
@@ -81,6 +83,19 @@ airflow:
 
 docker:
 	docker build -t quake-lake:dev .
+
+# Terraform and tflint must be installed. Nothing here needs AWS credentials or applies.
+infra-check:
+	terraform -chdir=infra init -input=false
+	terraform -chdir=infra fmt -check -recursive
+	terraform -chdir=infra validate
+	tflint --chdir=infra --init
+	tflint --chdir=infra --recursive
+	terraform -chdir=infra test
+
+plan:
+	terraform -chdir=infra init -input=false
+	terraform -chdir=infra plan -input=false -var plan_without_credentials=true
 
 clean:
 	uv run python -c "import shutil; [shutil.rmtree(p, ignore_errors=True) for p in (\".pytest_cache\", \".mypy_cache\", \".ruff_cache\", \"htmlcov\", \"dist\")]"

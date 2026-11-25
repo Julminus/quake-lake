@@ -25,6 +25,13 @@ lake/
 transform/target/
 transform/logs/
 
+# Terraform: providers, state, plans and the Lambda zip (the lock file is committed)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+infra/.build/
+
 # graphify knowledge graph (local only)
 graphify-out/
 
