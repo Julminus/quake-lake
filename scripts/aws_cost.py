@@ -49,22 +49,30 @@ ATHENA_QUERIES = 300  # ten a day
 ATHENA_MIN_BYTES = 10 * 2**20  # Athena bills at least 10 MB per query
 
 
-def deployment() -> dict[str, int]:
-    """The numbers the estimate takes from infra/, so the two can't drift apart."""
-    main = (ROOT / "infra" / "main.tf").read_text(encoding="utf-8")
-    ingest = (ROOT / "infra" / "modules" / "ingest" / "main.tf").read_text(encoding="utf-8")
-    schedules = re.findall(r'expression\s*=\s*"([^"]+)"', main)
+def deployment(main: str, ingest: str) -> dict[str, int]:
+    """The numbers the estimate takes from infra/main.tf and modules/ingest/main.tf.
+
+    Only whole lines of HCL count (a commented-out line starts with `#`), as
+    `terraform fmt` writes them. shortcut: a regex, not an HCL parser; it refuses what it
+    can't read rather than guess.
+    """
+    schedules = re.findall(r'^\s*expression\s*=\s*"([^"]+)"\s*$', main, re.M)
     if schedules != ["rate(1 hour)", "cron(0 0 * * ? *)"]:
         raise SystemExit(f"infra/main.tf's schedules are {schedules}: update BMKG_POLLS/USGS_RUNS")
-    years = re.search(r"silver_years\s*=\s*\[(\d+),\s*(\d+)\]", main)
-    # The root's memory_mb if it sets one, else the module's default.
-    memory = re.search(r"memory_mb\s*=\s*(\d+)", main) or re.search(
-        r'variable "memory_mb" \{[^}]*?default\s*=\s*(\d+)', ingest
+    years = re.search(r"^\s*silver_years\s*=\s*\[(\d+),\s*(\d+)\]\s*$", main, re.M)
+    # The root's memory_mb, inside its module "ingest" block, if it sets one; else the default.
+    block = re.search(r'^module "ingest" \{\n(.*?)^\}', main, re.M | re.S)
+    if block is None:
+        raise SystemExit('infra/main.tf has no module "ingest" block')
+    root = re.search(r"^\s*memory_mb\s*=\s*(.+?)\s*$", block[1], re.M)
+    default = re.search(
+        r'^variable "memory_mb" \{\n[^}]*?^\s*default\s*=\s*(\d+)\s*$', ingest, re.M
     )
-    if not years or not memory:
-        raise SystemExit("can't find silver_years in infra/main.tf or memory_mb in modules/ingest")
+    memory = root[1] if root else default[1] if default else None
+    if not years or memory is None or not memory.isdigit():
+        raise SystemExit(f"can't read silver_years or memory_mb (got {memory!r}) from infra/")
     return {
-        "lambda_memory_mb": int(memory[1]),
+        "lambda_memory_mb": int(memory),
         # Athena projects every month of these years, data or not: one LIST each (assumed).
         "athena_partitions": (int(years[2]) - int(years[1]) + 1) * 12,
     }
@@ -165,7 +173,11 @@ def main() -> None:
     ap.add_argument("--region", default="ap-southeast-1", choices=sorted(REGION_CODE))
     ap.add_argument("--out", type=Path, default=RESULTS / "aws-cost-s11.json")
     a = ap.parse_args()
-    d = deployment()
+    infra = ROOT / "infra"
+    d = deployment(
+        (infra / "main.tf").read_text(encoding="utf-8"),
+        (infra / "modules" / "ingest" / "main.tf").read_text(encoding="utf-8"),
+    )
     prices, m = fetch_prices(a.region), measured(d["lambda_memory_mb"])
     months = {n: month(n, m, d["athena_partitions"], prices) for n in (1, 12)}
     deployed = ("lambda", "bronze_puts", "storage", "logs")  # what runs with no one using it
