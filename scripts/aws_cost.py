@@ -21,7 +21,7 @@ OFFER_URL = (
     "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/{offer}/current/{region}/index.json"
 )
 REGION_CODE = {"ap-southeast-1": "APS1", "ap-southeast-3": "APS4"}  # usage-type prefixes
-MB, GB = 1e6, 2**30  # objects are counted in bytes; AWS bills GB as 2^30 bytes
+GB = 2**30  # objects are counted in bytes; AWS bills GB as 2^30 bytes
 
 # (offer, usage type after the region code, a word of the price's description, unit)
 PRICES = {
@@ -53,11 +53,14 @@ def deployment() -> dict[str, int]:
     """The numbers the estimate takes from infra/, so the two can't drift apart."""
     main = (ROOT / "infra" / "main.tf").read_text(encoding="utf-8")
     ingest = (ROOT / "infra" / "modules" / "ingest" / "main.tf").read_text(encoding="utf-8")
-    for schedule in ('expression = "rate(1 hour)"', 'expression = "cron(0 0 * * ? *)"'):
-        if schedule not in main:
-            raise SystemExit(f"infra/main.tf no longer has {schedule}: update BMKG_POLLS/USGS_RUNS")
-    years = re.search(r"silver_years = \[(\d+), (\d+)\]", main)
-    memory = re.search(r'variable "memory_mb" \{[^}]*?default\s*=\s*(\d+)', ingest)
+    schedules = re.findall(r'expression\s*=\s*"([^"]+)"', main)
+    if schedules != ["rate(1 hour)", "cron(0 0 * * ? *)"]:
+        raise SystemExit(f"infra/main.tf's schedules are {schedules}: update BMKG_POLLS/USGS_RUNS")
+    years = re.search(r"silver_years\s*=\s*\[(\d+),\s*(\d+)\]", main)
+    # The root's memory_mb if it sets one, else the module's default.
+    memory = re.search(r"memory_mb\s*=\s*(\d+)", main) or re.search(
+        r'variable "memory_mb" \{[^}]*?default\s*=\s*(\d+)', ingest
+    )
     if not years or not memory:
         raise SystemExit("can't find silver_years in infra/main.tf or memory_mb in modules/ingest")
     return {
