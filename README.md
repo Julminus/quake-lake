@@ -31,32 +31,40 @@ connection in Indonesia). Where each number comes from, and how to re-run it, is
 
 ### Terraform (planned, not applied)
 
-- **`make plan` plans 32 resources with no AWS account** (2 to 3 s once initialised): four
+- **`make plan` plans 33 resources with no AWS account** (2 to 3 s once initialised): four
   buckets with their access blocks, TLS-only policies and lifecycle rules, the ingest
-  Lambda with its role, log group and two EventBridge schedules, a Glue database and table,
-  an Athena workgroup and two IAM policies
+  Lambda with its role, log group, retry setting and two EventBridge schedules, a Glue
+  database and table, an Athena workgroup and two IAM policies
   ([the plan](docs/results/plan-s11.txt)). The plan is byte-identical from Windows and from
   Linux, down to the hash of the Lambda's 24,956-byte zip.
 - **About 3 cents a month as deployed** ($0.026 in the first month, $0.028 in the twelfth),
   from AWS's own price list for Singapore with no free tier applied. A daily silver rebuild
-  from a PC and 300 Athena queries a month bring it to $0.68 and $1.25 ($0.60 and $0.89
-  inside the free 100 GB of transfer); the biggest line is Athena listing partitions that
-  don't exist yet. Details and assumptions:
+  from a PC and 300 Athena queries a month bring it to $0.59 and $1.16 ($0.51 and $0.80
+  inside the free 100 GB of transfer); the biggest line is Athena considering partitions
+  that don't exist yet (an assumed S3 LIST each). Details and assumptions:
   [`docs/aws-cost-estimate.md`](docs/aws-cost-estimate.md).
-- **256 MB for the Lambda, chosen by measurement.** The handler's process peaks at 51.3 MiB,
-  but Lambda's CPU grows with memory: at 256 MB's share of a CPU (`docker --cpus 0.1447` on
-  AWS's Lambda image), a cold start was 0.81 to 0.91 s of init and a 2.4 to 3.5 s first
-  invocation (three BMKG feeds and 7 days of USGS into MinIO); at 128 MB, 1.75 to 1.86 s and
-  4.0 to 4.2 s ([`lambda-s11.log`](docs/results/lambda-s11.log)).
-- **Checks:** `terraform fmt`, `terraform validate`, `tflint` with the AWS ruleset (no
-  findings), and 5 `terraform test` runs against a mocked AWS provider, which check what the
-  modules build: public access blocked and plain HTTP denied on every bucket, the lifecycle
-  rules, an ingest role that can only put objects into bronze and write its own logs, each
-  schedule's event, the Glue table's location and partition projection, and a query policy
-  limited to silver's events and the results bucket. Of 12 deliberate bugs planted in the
-  modules (wider permissions, a missing projection setting, ...), they caught 11; the one
-  missed was the age at which unfinished uploads are cleaned up. CI runs all of it, plus the
-  plan, on every push; `make infra-check` locally (7 s).
+- **256 MB for the Lambda: half the cold start of 128 MB, for a fraction of a cent.** The
+  handler's process peaks at 51.3 MiB, but Lambda's CPU grows with memory. Emulating 256 MB's
+  share of a CPU (`docker --cpus 0.1447` on AWS's Lambda image, on this PC's CPU, not AWS's),
+  a cold start was 0.81 to 0.91 s of init and a 2.4 to 3.5 s first invocation (three BMKG
+  feeds and 7 days of USGS into MinIO); at 128 MB, 1.75 to 1.86 s and 4.0 to 4.2 s
+  ([`lambda-s11.log`](docs/results/lambda-s11.log)). 128 MB would bill fewer GB-seconds
+  (0.76 against 1.09 for the slowest cold start, about $0.004 a month less); for an hourly
+  poll either is fine, and I took the faster one.
+- **Checks:** `terraform fmt`, `terraform validate`, `tflint` with the AWS ruleset on the
+  root and every module (no findings), and 5 `terraform test` runs against a mocked AWS
+  provider, which check what the modules build: public access blocked and plain HTTP denied
+  on every bucket, the lifecycle rules and which buckets keep old versions, every IAM policy
+  compared whole (an ingest role that can only put objects into bronze and write its own
+  logs, a pipeline policy that reads bronze and rewrites silver, a query policy limited to
+  silver's events and the results bucket), each schedule's rule, event and permission, the
+  memory, timeout and retries, and the Glue table's location, partition types and
+  projection. To see that the checks have teeth, `scripts/mutate_infra.py` plants 36 bugs
+  one at a time (wider permissions, wrong wiring, a lost condition, an hourly schedule made
+  daily, ...): 35 fail a test; the one left is the projection's year range, a setting
+  ([`mutations-s11.txt`](docs/results/mutations-s11.txt)). A first version of the tests let
+  13 of 14 of a reviewer's mutations through. CI runs all of it, plus the plan, on every push
+  to `main` and every pull request; `make infra-check` locally (7 to 8.5 s).
 
 ### Airflow
 
@@ -328,7 +336,8 @@ flowchart LR
 
 - **[`infra/`](infra/)** is the AWS version, in Terraform (planned, never applied): the
   Lambda handler polls BMKG every hour and USGS every day into a bronze bucket; silver is
-  built from bronze by the CLI (or the Airflow stack) with AWS credentials; Athena queries
+  built from bronze by `quake-lake silver` with AWS credentials (the Airflow stack is wired
+  to MinIO today); Athena queries
   silver through a Glue table. Three small modules (`bucket`, `ingest`, `catalog`) and a
   root that wires them, with offline tests in `infra/tests/`:
 
@@ -336,9 +345,9 @@ flowchart LR
 flowchart LR
     EB1["EventBridge<br/>rate(1 hour)"] -->|"{sources: [bmkg]}"| L
     EB2["EventBridge<br/>cron, 00:00 UTC"] -->|"{sources: [usgs], days: 7}"| L
-    L["Lambda quake-lake-ingest<br/>python3.12, 256 MB, 5 min"] -->|"PutObject only"| BR[("S3 bronze<br/>versioned, 30 days")]
+    L["Lambda quake-lake-ingest<br/>python3.12, 256 MB, 5 min"] -->|"PutObject only"| BR[("S3 bronze<br/>old versions kept 30 days")]
     L --> CW["CloudWatch Logs<br/>30 days"]
-    PC["quake-lake silver<br/>(CLI or Airflow, pipeline policy)"] -->|read| BR
+    PC["quake-lake silver<br/>(CLI, pipeline policy)"] -->|read| BR
     PC -->|rewrite| SV[("S3 silver<br/>events/year=/month=")]
     GT["Glue table silver_events<br/>partition projection"] -.->|describes| SV
     AT["Athena workgroup<br/>1 GB scan cutoff"] --> GT
@@ -380,18 +389,23 @@ it, and `docker compose down -v` also deletes MinIO's data, Airflow's database a
 `make test` runs the offline tests (recorded responses, no network).
 
 **The AWS deployment, planned**, with [Terraform](https://developer.hashicorp.com/terraform/install)
-1.9 or later and [tflint](https://github.com/terraform-linters/tflint) (no AWS account
-needed; nothing is created):
+(tested with 1.17; `infra/` asks for 1.9 or later) and
+[tflint](https://github.com/terraform-linters/tflint); no AWS account is needed and nothing
+is created. The first run downloads the AWS provider (about 800 MB unpacked, in
+`infra/.terraform/`):
 
 ```bash
 make infra-check   # fmt, validate, tflint, terraform test (mocked AWS provider)
-make plan          # terraform plan of all 32 resources, with no credentials
+make plan          # terraform plan of all 33 resources, with no credentials
 ```
 
 With an AWS account, `terraform -chdir=infra plan` plans against it with your usual AWS
 credentials. Applying it is a decision of its own: read
 [`docs/aws-cost-estimate.md`](docs/aws-cost-estimate.md) and set a budget alert first. The
 outputs then give `BRONZE_URI` and `SILVER_URI` for the CLI, and the policies to attach.
+Queries go to the `quake-lake` workgroup with `quake_lake` as the database (with the AWS
+CLI, `--work-group quake-lake --query-execution-context Database=quake_lake`); none of this
+has been run, since nothing has been applied.
 
 `make backfill` fetches everything since 2015 into `lake/bronze` (about 2.5 minutes), and
 `make silver` rebuilds silver from it. The CLI writes bronze to `$BRONZE_URI` when it is set,
@@ -647,27 +661,37 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   name already taken), and state is a local file until a backend is set up.
 - **The Lambda may write bronze and nothing else.** Its role allows `s3:PutObject` on the
   bronze bucket and writing its own log group: no list, read or delete, so neither a bug nor
-  someone holding the role can destroy bronze, and bronze is versioned (old versions kept
-  30 days) for overwrites. Silver and dbt are not Lambdas: pandas, pyarrow and dbt don't fit
-  a zip of `src/` on the runtime's boto3, which is what the handler was built for. They run
-  wherever the Airflow stack or the CLI runs, with the `pipeline` policy (read bronze,
-  rewrite silver).
+  someone holding the role can delete bronze, and since bronze is versioned an overwrite
+  can be undone for 30 days. Silver and dbt are not Lambdas: pandas, pyarrow and dbt don't
+  fit a zip of `src/` on the runtime's boto3, which is what the handler was built for.
+  `quake-lake silver` runs anywhere with AWS credentials and the `pipeline` policy (read
+  bronze, rewrite silver); the Airflow stack and dbt's `minio` target are wired to MinIO
+  for now.
 - **One function, two schedules.** EventBridge invokes it hourly for BMKG and daily for
   USGS, each with its own event, so a stalled USGS request can't make an hourly BMKG poll
-  late. EventBridge invokes it asynchronously: when the handler raises, Lambda retries
-  twice. The 5-minute timeout is the cap on a stalled request (see "BMKG must be polled
-  often, and first"); a run takes about 1 to 4 s.
+  late. EventBridge invokes it asynchronously, and Lambda's default would retry a failed
+  invocation twice; here it doesn't retry. `fetch()` already retries each request, the
+  handler fails only after writing every feed that worked (a retry would write those
+  again), and the next poll comes anyway: BMKG within the hour, USGS the next day with a
+  7-day look-back. Failures show in the function's errors and logs. The 5-minute timeout is
+  the cap on a stalled request (see "BMKG must be polled often, and first"); a run takes
+  about 1 to 4 s.
 - **Partition projection, not a crawler.** The Glue table computes silver's
   `year=/month=` partitions from its properties, so a new month needs no crawler run and no
-  `MSCK REPAIR TABLE`. The cost is the range: Athena sees 2015 to 2040 (`silver_years`),
-  and a query without a `year` filter lists all 312 months, which is most of an Athena
-  query's cost here ([cost estimate](docs/aws-cost-estimate.md)).
-  `tests/test_infra.py` checks that the table's columns are silver's, in order.
+  `MSCK REPAIR TABLE`. The cost is the range: Athena sees 2015 to 2035 (`silver_years`),
+  and a query without a `year` filter considers all 252 months, data or not, which is most
+  of an Athena query's cost here if each costs an S3 LIST, as the
+  [cost estimate](docs/aws-cost-estimate.md) assumes. AWS advises against projection when
+  over half the projected partitions are empty; 109 of the 252 are today, and the share
+  falls every month. `tests/test_infra.py` checks that the table's columns are silver's,
+  in order.
 - **IAM policies are `jsonencode()`d.** With `aws_iam_policy_document` data sources, a
   mocked provider returns made-up JSON, so the tests couldn't read what a policy grants;
-  as plain JSON they can. AWS still checks the grammar on apply.
-- **Bucket names come from `bucket_prefix`.** S3 names are global, so AWS appends a unique
-  suffix and two deployments can't collide; the outputs print the names. Replacing a
+  as plain JSON they can, and they compare each policy whole. AWS still checks the
+  grammar on apply. The query policy also reads the `default` Glue database, as AWS's
+  example Athena policies do.
+- **Bucket names come from `bucket_prefix`.** S3 names are global, so Terraform appends a
+  unique suffix and two deployments can't collide; the outputs print the names. Replacing a
   bucket would change its name.
 - **No VPC, no KMS key, Singapore by default.** The function needs only the public
   internet and S3, and a VPC would need a NAT gateway, billed by the hour; buckets use S3's
@@ -683,7 +707,7 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
 ## What's next
 
 - A **Streamlit** dashboard on the gold marts.
-- **AWS, later:** an apply, once it's allowed (then measured: the Lambda's real duration
+- **AWS, later:** an apply (then measured: the Lambda's real duration
   and memory, a month's bill); a remote state backend; the gold marts as Parquet in the
   gold bucket, with Glue tables for Athena; dbt reading silver on S3 (its `minio` target
   is MinIO-only); an alarm with a notification on the function's errors.

@@ -1,5 +1,5 @@
 # terraform -chdir=infra plan -input=false -no-color -var plan_without_credentials=true
-# Terraform 1.17.1, hashicorp/aws 6.74.0, hashicorp/archive 2.8.1; 2026-11-25T18:27:53Z; the same bytes from Windows and from hashicorp/terraform:1.17.1 on Linux
+# Terraform 1.17.1, hashicorp/aws 6.74.0, hashicorp/archive 2.8.1; 2026-11-25T18:58:25Z; the same bytes from Windows and from hashicorp/terraform:1.17.1 on Linux
 module.ingest.data.archive_file.package: Reading...
 module.ingest.data.archive_file.package: Read complete after 0s [id=84e62badadbee02f52b1419ce012a0e1f77f61f4]
 
@@ -308,7 +308,7 @@ Terraform will perform the following actions:
           + "projection.month.digits" = "2"
           + "projection.month.range"  = "1,12"
           + "projection.month.type"   = "integer"
-          + "projection.year.range"   = "2015,2040"
+          + "projection.year.range"   = "2015,2035"
           + "projection.year.type"    = "integer"
         }
       + region        = "ap-southeast-1"
@@ -702,6 +702,14 @@ Terraform will perform the following actions:
       + tracing_config (known after apply)
     }
 
+  # module.ingest.aws_lambda_function_event_invoke_config.this will be created
+  + resource "aws_lambda_function_event_invoke_config" "this" {
+      + function_name          = "quake-lake-ingest"
+      + id                     = (known after apply)
+      + maximum_retry_attempts = 0
+      + region                 = "ap-southeast-1"
+    }
+
   # module.ingest.aws_lambda_permission.this["bmkg"] will be created
   + resource "aws_lambda_permission" "this" {
       + action              = "lambda:InvokeFunction"
@@ -812,22 +820,52 @@ Terraform will perform the following actions:
       + restrict_public_buckets = true
     }
 
-Plan: 32 to add, 0 to change, 0 to destroy.
+Plan: 33 to add, 0 to change, 0 to destroy.
 
 Changes to Outputs:
-  + athena               = {
+  + athena   = {
       + database  = "quake_lake"
       + workgroup = "quake-lake"
     }
-  + buckets              = {
+  + buckets  = {
       + athena_results = (known after apply)
       + bronze         = (known after apply)
       + gold           = (known after apply)
       + silver         = (known after apply)
     }
-  + ingest_function      = "quake-lake-ingest"
-  + ingest_package_bytes = 24956
-  + policies             = {
+  + ingest   = {
+      + function  = {
+          + log_retention_days = 30
+          + memory_mb          = 256
+          + name               = "quake-lake-ingest"
+          + package_bytes      = 24956
+          + timeout_s          = 300
+        }
+      + schedules = {
+          + bmkg = {
+              + event      = jsonencode(
+                    {
+                      + sources = [
+                          + "bmkg",
+                        ]
+                    }
+                )
+              + expression = "rate(1 hour)"
+            }
+          + usgs = {
+              + event      = jsonencode(
+                    {
+                      + days    = 7
+                      + sources = [
+                          + "usgs",
+                        ]
+                    }
+                )
+              + expression = "cron(0 0 * * ? *)"
+            }
+        }
+    }
+  + policies = {
       + pipeline = (known after apply)
       + query    = (known after apply)
     }
