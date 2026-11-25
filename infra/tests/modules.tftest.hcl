@@ -102,11 +102,10 @@ run "the_ingest_role_can_only_write_bronze_and_its_logs" {
     source = "./modules/ingest"
   }
   variables {
-    function_name     = "test-ingest"
-    source_dir        = "../src"
-    package_path      = ".build/test-ingest.zip"
-    bronze_bucket     = "test-bronze"
-    bronze_bucket_arn = "arn:aws:s3:::test-bronze"
+    function_name = "test-ingest"
+    source_dir    = "../src"
+    package_path  = ".build/test-ingest.zip"
+    bronze        = { bucket = "test-bronze", arn = "arn:aws:s3:::test-bronze" }
     schedules = {
       hourly = { expression = "rate(1 hour)", event = "{\"sources\":[\"bmkg\"]}" }
       daily  = { expression = "cron(0 0 * * ? *)", event = "{\"days\":7,\"sources\":[\"usgs\"]}" }
@@ -135,8 +134,14 @@ run "the_ingest_role_can_only_write_bronze_and_its_logs" {
     error_message = "The role may put objects into bronze and write its own logs, nothing else."
   }
   assert {
-    condition     = jsondecode(aws_iam_role.this.assume_role_policy).Statement[*].Principal == [{ Service = "lambda.amazonaws.com" }]
-    error_message = "Only Lambda may assume the role."
+    condition = jsondecode(aws_iam_role.this.assume_role_policy).Statement == [
+      { Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" },
+    ]
+    error_message = "Only Lambda may assume the role, and only assume it."
+  }
+  assert {
+    condition     = aws_lambda_function.this.source_code_hash == data.archive_file.package.output_base64sha256
+    error_message = "A change to src/ must change the deployed code."
   }
   assert {
     condition     = aws_lambda_function.this.environment[0].variables == tomap({ BRONZE_URI = "s3://test-bronze" })
@@ -151,8 +156,11 @@ run "the_ingest_role_can_only_write_bronze_and_its_logs" {
     error_message = "The function logs to the group Terraform creates (with a retention), not one Lambda would make."
   }
   assert {
-    condition     = aws_lambda_function_event_invoke_config.this.maximum_retry_attempts == 0
-    error_message = "A failed invocation isn't retried: the next scheduled poll is the retry."
+    condition = (
+      aws_lambda_function_event_invoke_config.this.function_name == aws_lambda_function.this.function_name
+      && aws_lambda_function_event_invoke_config.this.maximum_retry_attempts == 2
+    )
+    error_message = "A failed invocation of this function is retried twice (BMKG's feeds forget)."
   }
   assert {
     condition = { for k, t in aws_cloudwatch_event_target.this : k => [t.rule, t.arn, t.input] } == {
@@ -167,8 +175,8 @@ run "the_ingest_role_can_only_write_bronze_and_its_logs" {
     error_message = "Each rule runs on its own schedule."
   }
   assert {
-    condition = { for k, p in aws_lambda_permission.this : k => [p.source_arn, p.principal, p.action] } == {
-      for k, r in aws_cloudwatch_event_rule.this : k => [r.arn, "events.amazonaws.com", "lambda:InvokeFunction"]
+    condition = { for k, p in aws_lambda_permission.this : k => [p.function_name, p.source_arn, p.principal, p.action] } == {
+      for k, r in aws_cloudwatch_event_rule.this : k => [aws_lambda_function.this.function_name, r.arn, "events.amazonaws.com", "lambda:InvokeFunction"]
     }
     error_message = "Each rule, and only EventBridge, may invoke the function."
   }
@@ -180,17 +188,29 @@ run "the_catalog_reads_silver_and_the_query_policy_is_scoped" {
     source = "./modules/catalog"
   }
   variables {
-    database           = "test_lake"
-    silver_bucket      = "test-silver"
-    silver_bucket_arn  = "arn:aws:s3:::test-silver"
-    results_bucket     = "test-results"
-    results_bucket_arn = "arn:aws:s3:::test-results"
-    silver_years       = [2015, 2035]
+    database     = "test_lake"
+    silver       = { bucket = "test-silver", arn = "arn:aws:s3:::test-silver" }
+    results      = { bucket = "test-results", arn = "arn:aws:s3:::test-results" }
+    silver_years = [2015, 2035]
+  }
+  # Another partition, region and account than anywhere else here, so the Glue ARNs must
+  # really come from the database's ARN.
+  override_resource {
+    target = aws_glue_catalog_database.this
+    values = { arn = "arn:aws-cn:glue:cn-north-1:210987654321:database/test_lake" }
   }
 
   assert {
     condition     = aws_glue_catalog_table.silver_events.storage_descriptor[0].location == "s3://test-silver/events/"
     error_message = "The table reads silver's events/ folder."
+  }
+  assert {
+    condition = (
+      aws_glue_catalog_table.silver_events.parameters.classification == "parquet"
+      && aws_glue_catalog_table.silver_events.storage_descriptor[0].ser_de_info[0].serialization_library == "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+      && aws_glue_catalog_table.silver_events.storage_descriptor[0].input_format == "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    )
+    error_message = "Silver is Parquet: the table must read it with the Parquet SerDe and input format."
   }
   assert {
     condition     = [for k in aws_glue_catalog_table.silver_events.partition_keys : [k.name, k.type]] == [["year", "int"], ["month", "int"]]
@@ -212,8 +232,9 @@ run "the_catalog_reads_silver_and_the_query_policy_is_scoped" {
       aws_athena_workgroup.this.configuration[0].result_configuration[0].output_location == "s3://test-results/"
       && aws_athena_workgroup.this.configuration[0].enforce_workgroup_configuration
       && aws_athena_workgroup.this.configuration[0].bytes_scanned_cutoff_per_query == 1000000000
+      && aws_athena_workgroup.this.configuration[0].result_configuration[0].encryption_configuration[0].encryption_option == "SSE_S3"
     )
-    error_message = "Results go to the results bucket, a query stops at 1 GB, and clients can't override either."
+    error_message = "Results go, encrypted, to the results bucket, a query stops at 1 GB, and clients can't override either."
   }
   assert {
     condition = jsondecode(aws_iam_policy.query.policy).Statement == [
@@ -231,10 +252,10 @@ run "the_catalog_reads_silver_and_the_query_policy_is_scoped" {
         Effect = "Allow"
         Action = ["glue:GetDatabase", "glue:GetTable", "glue:GetTables", "glue:GetPartitions"]
         Resource = [
-          "arn:aws:glue:ap-southeast-1:123456789012:catalog",
-          "arn:aws:glue:ap-southeast-1:123456789012:database/default",
-          "arn:aws:glue:ap-southeast-1:123456789012:database/test_lake",
-          "arn:aws:glue:ap-southeast-1:123456789012:table/test_lake/*",
+          "arn:aws-cn:glue:cn-north-1:210987654321:catalog",
+          "arn:aws-cn:glue:cn-north-1:210987654321:database/default",
+          "arn:aws-cn:glue:cn-north-1:210987654321:database/test_lake",
+          "arn:aws-cn:glue:cn-north-1:210987654321:table/test_lake/*",
         ]
       },
       {
@@ -279,8 +300,30 @@ run "the_whole_configuration" {
     error_message = "The pipeline may read bronze and rewrite silver, nothing else."
   }
   assert {
-    condition     = [module.bronze.versioned, module.silver.versioned, module.gold.versioned, module.athena_results.versioned] == [true, false, false, false]
-    error_message = "Bronze, the only copy of BMKG's snapshots, keeps old versions; the rest can be rebuilt."
+    condition = output.retention == {
+      bronze         = { versioned = true, expire_days = null }
+      silver         = { versioned = false, expire_days = null }
+      gold           = { versioned = false, expire_days = null }
+      athena_results = { versioned = false, expire_days = 7 }
+    }
+    error_message = "Bronze, the only copy of BMKG's snapshots, keeps old versions; only query results expire, after 7 days."
+  }
+  # The wiring between modules: each reads and writes the right bucket. (Each module takes
+  # a whole bucket module, so a name and an ARN can't come from two different buckets.)
+  assert {
+    condition     = output.ingest.function.bronze_uri == "s3://${module.bronze.bucket}"
+    error_message = "The Lambda writes into bronze."
+  }
+  assert {
+    condition = (
+      output.athena.table_location == "s3://${module.silver.bucket}/events/"
+      && output.athena.results_location == "s3://${module.athena_results.bucket}/"
+    )
+    error_message = "Athena reads silver and writes its results to the results bucket."
+  }
+  assert {
+    condition     = output.ingest.function.retries == 2
+    error_message = "A failed invocation is retried twice."
   }
   assert {
     condition = (
@@ -309,7 +352,7 @@ run "the_whole_configuration" {
     error_message = "256 MB (measured: docs/results/lambda-s11.log), a 5-minute cap, 30 days of logs."
   }
   assert {
-    condition     = output.athena == { database = "quake_lake", workgroup = "quake-lake" }
+    condition     = output.athena.database == "quake_lake" && output.athena.workgroup == "quake-lake"
     error_message = "Athena names come from var.name, with an underscore for Glue."
   }
 }

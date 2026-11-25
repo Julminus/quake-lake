@@ -28,12 +28,11 @@ module "athena_results" {
 }
 
 module "ingest" {
-  source            = "./modules/ingest"
-  function_name     = "${var.name}-ingest"
-  source_dir        = "${path.root}/../src"
-  package_path      = "${path.root}/.build/ingest.zip"
-  bronze_bucket     = module.bronze.bucket
-  bronze_bucket_arn = module.bronze.arn
+  source        = "./modules/ingest"
+  function_name = "${var.name}-ingest"
+  source_dir    = "${path.root}/../src"
+  package_path  = "${path.root}/.build/ingest.zip"
+  bronze        = module.bronze # name and ARN of one bucket, so they can't come from two
   schedules = {
     # BMKG's feeds only hold the latest events, so they are polled every hour;
     # USGS once a day, 7 days back, which also picks up a week of revisions.
@@ -49,12 +48,10 @@ module "ingest" {
 }
 
 module "catalog" {
-  source             = "./modules/catalog"
-  database           = replace(var.name, "-", "_")
-  silver_bucket      = module.silver.bucket
-  silver_bucket_arn  = module.silver.arn
-  results_bucket     = module.athena_results.bucket
-  results_bucket_arn = module.athena_results.arn
+  source   = "./modules/catalog"
+  database = replace(var.name, "-", "_")
+  silver   = module.silver
+  results  = module.athena_results
   # shortcut: Athena only sees these years of silver; widen it before backfilling earlier
   # or before 2035. AWS advises against projection when over half the projected
   # partitions are empty: 109 of these 252 months are, today. Each year more costs

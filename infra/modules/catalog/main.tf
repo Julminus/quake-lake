@@ -17,24 +17,14 @@ variable "database" {
   type        = string
 }
 
-variable "silver_bucket" {
-  description = "Bucket silver is written to (its SILVER_URI is s3://<bucket>)."
-  type        = string
+variable "silver" {
+  description = "The bucket silver is written to (SILVER_URI s3://<bucket>), a bucket module."
+  type        = object({ bucket = string, arn = string })
 }
 
-variable "silver_bucket_arn" {
-  description = "ARN of the silver bucket."
-  type        = string
-}
-
-variable "results_bucket" {
-  description = "Bucket for Athena's query results."
-  type        = string
-}
-
-variable "results_bucket_arn" {
-  description = "ARN of the results bucket."
-  type        = string
+variable "results" {
+  description = "The bucket for Athena's query results, a bucket module."
+  type        = object({ bucket = string, arn = string })
 }
 
 variable "silver_years" {
@@ -79,7 +69,7 @@ resource "aws_glue_catalog_table" "silver_events" {
   }
 
   storage_descriptor {
-    location      = "s3://${var.silver_bucket}/events/"
+    location      = "s3://${var.silver.bucket}/events/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
     ser_de_info {
@@ -107,7 +97,7 @@ resource "aws_athena_workgroup" "this" {
       selected_engine_version = "Athena engine version 3"
     }
     result_configuration {
-      output_location = "s3://${var.results_bucket}/"
+      output_location = "s3://${var.results.bucket}/"
       encryption_configuration {
         encryption_option = "SSE_S3"
       }
@@ -153,39 +143,39 @@ resource "aws_iam_policy" "query" {
         Sid       = "ListSilverEvents"
         Effect    = "Allow"
         Action    = "s3:ListBucket"
-        Resource  = var.silver_bucket_arn
+        Resource  = var.silver.arn
         Condition = { StringLike = { "s3:prefix" = ["events/*"] } }
       },
       {
         Sid      = "ReadSilverEvents"
         Effect   = "Allow"
         Action   = "s3:GetObject"
-        Resource = "${var.silver_bucket_arn}/events/*"
+        Resource = "${var.silver.arn}/events/*"
       },
       {
         Sid      = "ListQueryResults"
         Effect   = "Allow"
         Action   = ["s3:GetBucketLocation", "s3:ListBucket"]
-        Resource = var.results_bucket_arn
+        Resource = var.results.arn
       },
       {
         Sid      = "WriteQueryResults"
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"]
-        Resource = "${var.results_bucket_arn}/*"
+        Resource = "${var.results.arn}/*"
       },
     ]
   })
 }
 
-output "database" {
-  description = "Glue database holding silver_events."
-  value       = aws_glue_catalog_database.this.name
-}
-
-output "workgroup" {
-  description = "Athena workgroup to query in."
-  value       = aws_athena_workgroup.this.name
+output "athena" {
+  description = "Where to query: the database and workgroup, what the table reads, where results go."
+  value = {
+    database         = aws_glue_catalog_database.this.name
+    workgroup        = aws_athena_workgroup.this.name
+    table_location   = aws_glue_catalog_table.silver_events.storage_descriptor[0].location
+    results_location = aws_athena_workgroup.this.configuration[0].result_configuration[0].output_location
+  }
 }
 
 output "query_policy_arn" {

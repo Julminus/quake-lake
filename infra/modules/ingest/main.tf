@@ -31,14 +31,9 @@ variable "package_path" {
   type        = string
 }
 
-variable "bronze_bucket" {
-  description = "Name of the bucket the handler writes to (its BRONZE_URI)."
-  type        = string
-}
-
-variable "bronze_bucket_arn" {
-  description = "ARN of that bucket, for the function's policy."
-  type        = string
+variable "bronze" {
+  description = "The bucket the handler writes to (a bucket module), its name and ARN together."
+  type        = object({ bucket = string, arn = string })
 }
 
 variable "schedules" {
@@ -107,7 +102,7 @@ resource "aws_iam_role_policy" "this" {
         Sid      = "WriteBronze"
         Effect   = "Allow"
         Action   = "s3:PutObject"
-        Resource = "${var.bronze_bucket_arn}/*"
+        Resource = "${var.bronze.arn}/*"
       },
       {
         Sid      = "WriteOwnLogs"
@@ -131,7 +126,7 @@ resource "aws_lambda_function" "this" {
 
   environment {
     variables = {
-      BRONZE_URI = "s3://${var.bronze_bucket}"
+      BRONZE_URI = "s3://${var.bronze.bucket}"
     }
   }
 
@@ -144,14 +139,14 @@ resource "aws_lambda_function" "this" {
   depends_on = [aws_iam_role_policy.this]
 }
 
-# No retries of a failed invocation (Lambda's default for EventBridge's asynchronous calls
-# is two): fetch() already retries each request, the handler fails only after writing every
-# feed that worked, so a retry would write those again, and the next scheduled poll comes
-# anyway (BMKG within the hour; USGS the next day, 7 days back). Failures show in the
-# function's Errors metric and its logs.
+# A failed invocation is retried twice, about 1 and 3 minutes later (Lambda's default for
+# EventBridge's asynchronous calls, written down so the tests hold it). fetch()'s own
+# retries span about 7 s; these outlast a short BMKG outage, and BMKG's feeds forget.
+# The cost: the handler fails only after writing every feed that worked, so a retry
+# writes those again (about 10 KB; silver drops the repeats).
 resource "aws_lambda_function_event_invoke_config" "this" {
   function_name          = aws_lambda_function.this.function_name
-  maximum_retry_attempts = 0
+  maximum_retry_attempts = 2
 }
 
 resource "aws_cloudwatch_event_rule" "this" {
@@ -177,9 +172,11 @@ resource "aws_lambda_permission" "this" {
 }
 
 output "function" {
-  description = "The function as built: name, memory, timeout, log retention, zip size."
+  description = "The function as built: name, bucket, memory, timeout, retries, logs, zip size."
   value = {
     name               = aws_lambda_function.this.function_name
+    bronze_uri         = aws_lambda_function.this.environment[0].variables.BRONZE_URI
+    retries            = aws_lambda_function_event_invoke_config.this.maximum_retry_attempts
     memory_mb          = aws_lambda_function.this.memory_size
     timeout_s          = aws_lambda_function.this.timeout
     log_retention_days = aws_cloudwatch_log_group.this.retention_in_days

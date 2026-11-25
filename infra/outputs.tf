@@ -18,9 +18,16 @@ output "ingest" {
 
 output "athena" {
   description = "Where to query silver: database.silver_events in this workgroup."
+  value       = module.catalog.athena
+}
+
+output "retention" {
+  description = "Per bucket: old versions kept, and days until objects expire."
   value = {
-    database  = module.catalog.database
-    workgroup = module.catalog.workgroup
+    bronze         = module.bronze.retention
+    silver         = module.silver.retention
+    gold           = module.gold.retention
+    athena_results = module.athena_results.retention
   }
 }
 
