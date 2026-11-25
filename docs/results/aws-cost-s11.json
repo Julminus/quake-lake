@@ -1,0 +1,129 @@
+{
+  "region": "ap-southeast-1",
+  "assumptions": {
+    "days": 30,
+    "bmkg_polls": 720,
+    "usgs_runs": 30,
+    "every_invocation_cold": true,
+    "log_bytes_per_invocation": 1000,
+    "silver_runs_from_outside_aws": 30,
+    "athena_queries": 300,
+    "athena_partitions_listed_per_query": 312,
+    "free_tier": "none applied"
+  },
+  "measured": {
+    "lambda_memory_gb": 0.25,
+    "lambda_cold_seconds_max": 4.350682,
+    "bmkg_bytes_per_poll": 9614,
+    "bmkg_objects_per_poll": 3,
+    "usgs_bytes_per_run": 14701,
+    "backfill_bytes": 18990379,
+    "backfill_objects": 143,
+    "silver_objects": 144,
+    "silver_bytes": 3135062
+  },
+  "prices": {
+    "lambda_gb_second": {
+      "usd": 1.66667e-05,
+      "per": "GB-second",
+      "description": "AWS Lambda - Total Compute - Asia Pacific (Singapore)-Tier-1",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSLambda/current/ap-southeast-1/index.json",
+      "published": "2026-11-20T20:36:47Z"
+    },
+    "lambda_request": {
+      "usd": 2e-07,
+      "per": "request",
+      "description": "AWS Lambda - Total Requests - Asia Pacific (Singapore)",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSLambda/current/ap-southeast-1/index.json",
+      "published": "2026-11-20T20:36:47Z"
+    },
+    "s3_storage_gb_month": {
+      "usd": 0.025,
+      "per": "GB-month",
+      "description": "$0.025 per GB - first 50 TB / month of storage used",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/ap-southeast-1/index.json",
+      "published": "2026-11-25T15:26:11Z"
+    },
+    "s3_put_list": {
+      "usd": 5e-06,
+      "per": "request",
+      "description": "$0.005 per 1,000 PUT, COPY, POST, or LIST requests",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/ap-southeast-1/index.json",
+      "published": "2026-11-25T15:26:11Z"
+    },
+    "s3_get": {
+      "usd": 4e-07,
+      "per": "request",
+      "description": "$0.004 per 10,000 GET and all other requests",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/ap-southeast-1/index.json",
+      "published": "2026-11-25T15:26:11Z"
+    },
+    "internet_out_gb": {
+      "usd": 0.12,
+      "per": "GB",
+      "description": "$0.120 per GB - first 10 TB / month data transfer out beyond the global free tier",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/current/ap-southeast-1/index.json",
+      "published": "2026-11-19T10:58:41Z"
+    },
+    "athena_tb_scanned": {
+      "usd": 5.0,
+      "per": "TB",
+      "description": "5.00 USD per Terabytes for DataScannedInTB in Asia Pacific (Singapore)",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonAthena/current/ap-southeast-1/index.json",
+      "published": "2026-11-20T16:46:52Z"
+    },
+    "glue_request": {
+      "usd": 1e-06,
+      "per": "request",
+      "description": "$1 per 1,000,000 requests for AWS Glue Data Catalog request",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSGlue/current/ap-southeast-1/index.json",
+      "published": "2026-11-25T15:01:50Z"
+    },
+    "glue_object_month": {
+      "usd": 1e-05,
+      "per": "object-month",
+      "description": "$1 per 100,000 objects per month for AWS Glue Data Catalog storage",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSGlue/current/ap-southeast-1/index.json",
+      "published": "2026-11-25T15:01:50Z"
+    },
+    "logs_ingest_gb": {
+      "usd": 0.7,
+      "per": "GB",
+      "description": "$0.70 per GB custom log data ingested in Standard log class - Asia Pacific (Singapore)",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/current/ap-southeast-1/index.json",
+      "published": "2026-11-25T15:02:40Z"
+    }
+  },
+  "months": {
+    "1": {
+      "items_usd": {
+        "lambda": 0.013746,
+        "bronze_puts": 0.01095,
+        "storage": 0.000687,
+        "logs": 0.000489,
+        "silver_rebuild_requests": 0.049946,
+        "silver_rebuild_transfer_out": 0.088357,
+        "athena_scans": 0.013642,
+        "athena_s3_requests": 0.50556,
+        "glue": 0.00062
+      },
+      "deployed_only_usd": 0.0259,
+      "total_usd": 0.684
+    },
+    "12": {
+      "items_usd": {
+        "lambda": 0.013746,
+        "bronze_puts": 0.01095,
+        "storage": 0.002572,
+        "logs": 0.000489,
+        "silver_rebuild_requests": 0.342639,
+        "silver_rebuild_transfer_out": 0.359911,
+        "athena_scans": 0.013642,
+        "athena_s3_requests": 0.50556,
+        "glue": 0.00062
+      },
+      "deployed_only_usd": 0.0278,
+      "total_usd": 1.2501
+    }
+  }
+}
