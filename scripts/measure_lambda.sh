@@ -42,3 +42,5 @@ for mb in 128 256 512; do
     docker stop measure-lambda > /dev/null
   done
 done
+# The objects written above are throwaway; the pipeline's bronze (s3://lake/bronze) is untouched.
+docker compose run --rm --entrypoint mc createbucket rm --recursive --force local/lake/bronze-measure-lambda > /dev/null 2>&1
