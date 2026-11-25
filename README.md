@@ -3,7 +3,8 @@
 A medallion-architecture data pipeline for Indonesian earthquake data: USGS and BMKG feeds land
 raw in a bronze layer on S3 (or MinIO, or a local folder), become one typed, deduplicated
 Parquet table in silver, and are modelled with dbt and DuckDB into gold marts, once a day, by
-an Airflow DAG. A Terraform deployment comes next. Everything runs on a laptop: `docker
+an Airflow DAG. Terraform describes the AWS deployment (S3, a scheduled Lambda, Glue and
+Athena), planned and tested but never applied. Everything runs on a laptop: `docker
 compose up` starts MinIO and Airflow and runs the pipeline; without Docker, bronze and silver
 go to a folder and gold to a DuckDB file.
 
@@ -13,8 +14,9 @@ go to a folder and gold to a DuckDB file.
 
 **Status:** bronze (ingestion), silver (typed Parquet, validation, deduplication across
 sources, provinces), gold (dbt models, tests and an incremental fact table) and the Airflow
-DAG that runs them daily are built and measured. Terraform comes next; see
-[What's next](#whats-next).
+DAG that runs them daily are built and measured. The AWS deployment in [`infra/`](infra/) is
+Terraform that plans and passes its offline tests; it has not been applied to an AWS
+account. A dashboard comes next; see [What's next](#whats-next).
 
 ![quake-lake usgs and quake-lake bmkg writing into s3://lake/bronze on a local MinIO, then quake-lake silver rebuilding s3://lake/silver](docs/img/ingest.svg)
 
@@ -22,10 +24,39 @@ DAG that runs them daily are built and measured. Terraform comes next; see
 
 ## Results
 
-Measured on 2026-11-20 (bronze), 2026-11-21 (silver), 2026-11-22 (gold) and 2026-11-24
-(Airflow, UTC) on this PC (Windows 11, Docker Desktop, a home connection in Indonesia).
-Where each number comes from, and how to re-run it, is in
+Measured on 2026-11-20 (bronze), 2026-11-21 (silver), 2026-11-22 (gold), 2026-11-24
+(Airflow) and 2026-11-25 (Terraform, UTC) on this PC (Windows 11, Docker Desktop, a home
+connection in Indonesia). Where each number comes from, and how to re-run it, is in
 [`docs/results/`](docs/results/README.md).
+
+### Terraform (planned, not applied)
+
+- **`make plan` plans 32 resources with no AWS account** (2 to 3 s once initialised): four
+  buckets with their access blocks, TLS-only policies and lifecycle rules, the ingest
+  Lambda with its role, log group and two EventBridge schedules, a Glue database and table,
+  an Athena workgroup and two IAM policies
+  ([the plan](docs/results/plan-s11.txt)). The plan is byte-identical from Windows and from
+  Linux, down to the hash of the Lambda's 24,956-byte zip.
+- **About 3 cents a month as deployed** ($0.026 in the first month, $0.028 in the twelfth),
+  from AWS's own price list for Singapore with no free tier applied. A daily silver rebuild
+  from a PC and 300 Athena queries a month bring it to $0.68 and $1.25 ($0.60 and $0.89
+  inside the free 100 GB of transfer); the biggest line is Athena listing partitions that
+  don't exist yet. Details and assumptions:
+  [`docs/aws-cost-estimate.md`](docs/aws-cost-estimate.md).
+- **256 MB for the Lambda, chosen by measurement.** The handler's process peaks at 51.3 MiB,
+  but Lambda's CPU grows with memory: at 256 MB's share of a CPU (`docker --cpus 0.1447` on
+  AWS's Lambda image), a cold start was 0.81 to 0.91 s of init and a 2.4 to 3.5 s first
+  invocation (three BMKG feeds and 7 days of USGS into MinIO); at 128 MB, 1.75 to 1.86 s and
+  4.0 to 4.2 s ([`lambda-s11.log`](docs/results/lambda-s11.log)).
+- **Checks:** `terraform fmt`, `terraform validate`, `tflint` with the AWS ruleset (no
+  findings), and 5 `terraform test` runs against a mocked AWS provider, which check what the
+  modules build: public access blocked and plain HTTP denied on every bucket, the lifecycle
+  rules, an ingest role that can only put objects into bronze and write its own logs, each
+  schedule's event, the Glue table's location and partition projection, and a query policy
+  limited to silver's events and the results bucket. Of 12 deliberate bugs planted in the
+  modules (wider permissions, a missing projection setting, ...), they caught 11; the one
+  missed was the age at which unfinished uploads are cleaned up. CI runs all of it, plus the
+  plan, on every push; `make infra-check` locally (7 s).
 
 ### Airflow
 
@@ -170,12 +201,13 @@ fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
 - **MinIO:** with the image pulled, `docker compose up -d --wait minio` is healthy in 2.3 to
   2.4 s. The CLI's image is 1,183 MB since gold (233 MB with bronze only, 688 MB with
   silver): pyarrow alone is 170 MB, and dbt brings DuckDB (66 MB), Babel (33 MB) and more.
-- **Tests:** 200 offline tests (recorded responses and small built records; one concurrency
+- **Tests:** 202 offline tests (recorded responses and small built records; one concurrency
   test runs on Linux only) at 100% branch coverage of the Python package (CI fails below
-  90%), in 14.4 to 14.5 s (three runs); 5 of them run dbt (about 10 s of that). 12 test the
+  90%), in 13.9 to 15.9 s (three runs); 5 of them run dbt (about 10 s of that), and 2 check
+  that the Glue table in `infra/` matches silver's schema. 12 test the
   Airflow DAG and need Airflow, so they skip outside its image and CI runs them inside it.
   Two more run against a real MinIO (a storage round trip and a silver rebuild); CI runs
-  them too.
+  them too. The Terraform has 5 tests of its own (above).
 
 ## How it works
 
@@ -294,6 +326,26 @@ flowchart LR
   that hasn't succeeded an hour after it was queued calls a deadline alert. The UI is at
   http://127.0.0.1:8080 (no login, local only).
 
+- **[`infra/`](infra/)** is the AWS version, in Terraform (planned, never applied): the
+  Lambda handler polls BMKG every hour and USGS every day into a bronze bucket; silver is
+  built from bronze by the CLI (or the Airflow stack) with AWS credentials; Athena queries
+  silver through a Glue table. Three small modules (`bucket`, `ingest`, `catalog`) and a
+  root that wires them, with offline tests in `infra/tests/`:
+
+```mermaid
+flowchart LR
+    EB1["EventBridge<br/>rate(1 hour)"] -->|"{sources: [bmkg]}"| L
+    EB2["EventBridge<br/>cron, 00:00 UTC"] -->|"{sources: [usgs], days: 7}"| L
+    L["Lambda quake-lake-ingest<br/>python3.12, 256 MB, 5 min"] -->|"PutObject only"| BR[("S3 bronze<br/>versioned, 30 days")]
+    L --> CW["CloudWatch Logs<br/>30 days"]
+    PC["quake-lake silver<br/>(CLI or Airflow, pipeline policy)"] -->|read| BR
+    PC -->|rewrite| SV[("S3 silver<br/>events/year=/month=")]
+    GT["Glue table silver_events<br/>partition projection"] -.->|describes| SV
+    AT["Athena workgroup<br/>1 GB scan cutoff"] --> GT
+    AT --> RS[("S3 query results<br/>expire after 7 days")]
+    GB[("S3 gold<br/>reserved")]
+```
+
 ## Quickstart
 
 Needs [uv](https://docs.astral.sh/uv/) and GNU make; Docker for MinIO.
@@ -327,6 +379,20 @@ it, and `docker compose down -v` also deletes MinIO's data, Airflow's database a
 
 `make test` runs the offline tests (recorded responses, no network).
 
+**The AWS deployment, planned**, with [Terraform](https://developer.hashicorp.com/terraform/install)
+1.9 or later and [tflint](https://github.com/terraform-linters/tflint) (no AWS account
+needed; nothing is created):
+
+```bash
+make infra-check   # fmt, validate, tflint, terraform test (mocked AWS provider)
+make plan          # terraform plan of all 32 resources, with no credentials
+```
+
+With an AWS account, `terraform -chdir=infra plan` plans against it with your usual AWS
+credentials. Applying it is a decision of its own: read
+[`docs/aws-cost-estimate.md`](docs/aws-cost-estimate.md) and set a budget alert first. The
+outputs then give `BRONZE_URI` and `SILVER_URI` for the CLI, and the policies to attach.
+
 `make backfill` fetches everything since 2015 into `lake/bronze` (about 2.5 minutes), and
 `make silver` rebuilds silver from it. The CLI writes bronze to `$BRONZE_URI` when it is set,
 else to `lake/bronze`, and silver to `$SILVER_URI`, else `lake/silver`; `--bronze` and
@@ -359,8 +425,8 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
 - **BMKG must be polled often, and first.** Its feeds only hold the latest events: `autogempa`
   just one, and in the recorded snapshot the 15 felt events span about 2.5 days and the 15
   M5.0+ events 22 days. Events that scroll off between polls are gone. So the handler polls
-  BMKG before USGS, isolates every feed, and takes `sources` in the event: the plan is an
-  hourly BMKG schedule next to a daily USGS one, with the Terraform step. The Airflow DAG
+  BMKG before USGS, isolates every feed, and takes `sources` in the event: `infra/`
+  schedules BMKG hourly and USGS daily, as separate invocations. The Airflow DAG
   polls BMKG once a day, which sees every felt event only while no more than 15 happen in a
   day (the recorded 15 spanned 2.5 days; an aftershock swarm can exceed it). A slow USGS can't be bounded by `fetch()`
   alone: its 60 s timeout applies to each wait on the socket, not to the request, so a server
@@ -573,14 +639,54 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   Airflow 3.3.2 it ends in a traceback and a non-zero exit once a DAG with a deadline
   alert succeeds
   ([apache/airflow#73428](https://github.com/apache/airflow/issues/73428)).
+- **Terraform: plan only, and a plan needs no AWS account.** Nothing is applied (no cloud
+  spend without a decision). With `plan_without_credentials=true` the provider gets
+  placeholder keys and skips its start-up calls (checking the keys, looking up the account);
+  a plan of a new deployment makes no other API call, since nothing exists to read back.
+  The limit: only AWS can say whether an apply would work (a quota, a policy AWS rejects, a
+  name already taken), and state is a local file until a backend is set up.
+- **The Lambda may write bronze and nothing else.** Its role allows `s3:PutObject` on the
+  bronze bucket and writing its own log group: no list, read or delete, so neither a bug nor
+  someone holding the role can destroy bronze, and bronze is versioned (old versions kept
+  30 days) for overwrites. Silver and dbt are not Lambdas: pandas, pyarrow and dbt don't fit
+  a zip of `src/` on the runtime's boto3, which is what the handler was built for. They run
+  wherever the Airflow stack or the CLI runs, with the `pipeline` policy (read bronze,
+  rewrite silver).
+- **One function, two schedules.** EventBridge invokes it hourly for BMKG and daily for
+  USGS, each with its own event, so a stalled USGS request can't make an hourly BMKG poll
+  late. EventBridge invokes it asynchronously: when the handler raises, Lambda retries
+  twice. The 5-minute timeout is the cap on a stalled request (see "BMKG must be polled
+  often, and first"); a run takes about 1 to 4 s.
+- **Partition projection, not a crawler.** The Glue table computes silver's
+  `year=/month=` partitions from its properties, so a new month needs no crawler run and no
+  `MSCK REPAIR TABLE`. The cost is the range: Athena sees 2015 to 2040 (`silver_years`),
+  and a query without a `year` filter lists all 312 months, which is most of an Athena
+  query's cost here ([cost estimate](docs/aws-cost-estimate.md)).
+  `tests/test_infra.py` checks that the table's columns are silver's, in order.
+- **IAM policies are `jsonencode()`d.** With `aws_iam_policy_document` data sources, a
+  mocked provider returns made-up JSON, so the tests couldn't read what a policy grants;
+  as plain JSON they can. AWS still checks the grammar on apply.
+- **Bucket names come from `bucket_prefix`.** S3 names are global, so AWS appends a unique
+  suffix and two deployments can't collide; the outputs print the names. Replacing a
+  bucket would change its name.
+- **No VPC, no KMS key, Singapore by default.** The function needs only the public
+  internet and S3, and a VPC would need a NAT gateway, billed by the hour; buckets use S3's
+  own encryption (SSE-S3). `ap-southeast-1` is enabled in every account; Jakarta
+  (`ap-southeast-3`) works too once the account opts into it (`-var region=...`).
+- **The policies aren't attached to anyone.** Terraform creates no IAM users or access
+  keys (keys would sit in the state file); attach `pipeline` and `query` to your own user
+  or role.
 - **MinIO from Chainguard.** MinIO stopped publishing community images in 2025 (`minio/minio`
   is gone from Docker Hub), so `compose.yaml` uses Chainguard's build from source, pinned by
   digest. Its ports bind to 127.0.0.1 only.
 
 ## What's next
 
-- **Terraform** for S3, Lambda with EventBridge schedules (hourly BMKG, daily USGS), Glue
-  and Athena (plan only), then a **Streamlit** dashboard on the gold marts.
+- A **Streamlit** dashboard on the gold marts.
+- **AWS, later:** an apply, once it's allowed (then measured: the Lambda's real duration
+  and memory, a month's bill); a remote state backend; the gold marts as Parquet in the
+  gold bucket, with Glue tables for Athena; dbt reading silver on S3 (its `minio` target
+  is MinIO-only); an alarm with a notification on the function's errors.
 - **Airflow, later:** a Slack or email notifier on the deadline alert and on failures; a
   whole-DAG test with `airflow dags test` once apache/airflow#73428 is fixed (its manual run
   would fetch BMKG and USGS live, so CI would need them pointed at recorded responses).

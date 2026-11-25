@@ -1,0 +1,838 @@
+# terraform -chdir=infra plan -input=false -no-color -var plan_without_credentials=true
+# Terraform 1.17.1, hashicorp/aws 6.74.0, hashicorp/archive 2.8.1; 2026-11-25T18:27:53Z; the same bytes from Windows and from hashicorp/terraform:1.17.1 on Linux
+module.ingest.data.archive_file.package: Reading...
+module.ingest.data.archive_file.package: Read complete after 0s [id=84e62badadbee02f52b1419ce012a0e1f77f61f4]
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  + create
+
+Terraform will perform the following actions:
+
+  # aws_iam_policy.pipeline will be created
+  + resource "aws_iam_policy" "pipeline" {
+      + arn              = (known after apply)
+      + attachment_count = (known after apply)
+      + description      = "Build quake-lake's silver from bronze."
+      + id               = (known after apply)
+      + name             = "quake-lake-pipeline"
+      + name_prefix      = (known after apply)
+      + path             = "/"
+      + policy           = (known after apply)
+      + policy_id        = (known after apply)
+      + tags_all         = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+    }
+
+  # module.athena_results.aws_s3_bucket.this will be created
+  + resource "aws_s3_bucket" "this" {
+      + acceleration_status         = (known after apply)
+      + acl                         = (known after apply)
+      + arn                         = (known after apply)
+      + bucket                      = (known after apply)
+      + bucket_domain_name          = (known after apply)
+      + bucket_namespace            = (known after apply)
+      + bucket_prefix               = "quake-lake-athena-"
+      + bucket_region               = (known after apply)
+      + bucket_regional_domain_name = (known after apply)
+      + force_destroy               = false
+      + hosted_zone_id              = (known after apply)
+      + id                          = (known after apply)
+      + object_lock_enabled         = (known after apply)
+      + policy                      = (known after apply)
+      + region                      = "ap-southeast-1"
+      + request_payer               = (known after apply)
+      + tags_all                    = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+      + website_domain              = (known after apply)
+      + website_endpoint            = (known after apply)
+
+      + cors_rule (known after apply)
+
+      + grant (known after apply)
+
+      + lifecycle_rule (known after apply)
+
+      + logging (known after apply)
+
+      + object_lock_configuration (known after apply)
+
+      + replication_configuration (known after apply)
+
+      + server_side_encryption_configuration (known after apply)
+
+      + versioning (known after apply)
+
+      + website (known after apply)
+    }
+
+  # module.athena_results.aws_s3_bucket_lifecycle_configuration.this will be created
+  + resource "aws_s3_bucket_lifecycle_configuration" "this" {
+      + bucket                                 = (known after apply)
+      + expected_bucket_owner                  = (known after apply)
+      + id                                     = (known after apply)
+      + region                                 = "ap-southeast-1"
+      + transition_default_minimum_object_size = "all_storage_classes_128K"
+
+      + rule {
+          + id     = "abort-incomplete-uploads"
+          + status = "Enabled"
+            # (1 unchanged attribute hidden)
+
+          + abort_incomplete_multipart_upload {
+              + days_after_initiation = 1
+            }
+
+          + filter {
+                # (1 unchanged attribute hidden)
+            }
+        }
+      + rule {
+          + id     = "expire-objects"
+          + status = "Enabled"
+            # (1 unchanged attribute hidden)
+
+          + expiration {
+              + days                         = 7
+              + expired_object_delete_marker = false
+            }
+
+          + filter {
+                # (1 unchanged attribute hidden)
+            }
+        }
+    }
+
+  # module.athena_results.aws_s3_bucket_policy.this will be created
+  + resource "aws_s3_bucket_policy" "this" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+      + policy = (known after apply)
+      + region = "ap-southeast-1"
+    }
+
+  # module.athena_results.aws_s3_bucket_public_access_block.this will be created
+  + resource "aws_s3_bucket_public_access_block" "this" {
+      + block_public_acls       = true
+      + block_public_policy     = true
+      + bucket                  = (known after apply)
+      + id                      = (known after apply)
+      + ignore_public_acls      = true
+      + region                  = "ap-southeast-1"
+      + restrict_public_buckets = true
+    }
+
+  # module.bronze.aws_s3_bucket.this will be created
+  + resource "aws_s3_bucket" "this" {
+      + acceleration_status         = (known after apply)
+      + acl                         = (known after apply)
+      + arn                         = (known after apply)
+      + bucket                      = (known after apply)
+      + bucket_domain_name          = (known after apply)
+      + bucket_namespace            = (known after apply)
+      + bucket_prefix               = "quake-lake-bronze-"
+      + bucket_region               = (known after apply)
+      + bucket_regional_domain_name = (known after apply)
+      + force_destroy               = false
+      + hosted_zone_id              = (known after apply)
+      + id                          = (known after apply)
+      + object_lock_enabled         = (known after apply)
+      + policy                      = (known after apply)
+      + region                      = "ap-southeast-1"
+      + request_payer               = (known after apply)
+      + tags_all                    = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+      + website_domain              = (known after apply)
+      + website_endpoint            = (known after apply)
+
+      + cors_rule (known after apply)
+
+      + grant (known after apply)
+
+      + lifecycle_rule (known after apply)
+
+      + logging (known after apply)
+
+      + object_lock_configuration (known after apply)
+
+      + replication_configuration (known after apply)
+
+      + server_side_encryption_configuration (known after apply)
+
+      + versioning (known after apply)
+
+      + website (known after apply)
+    }
+
+  # module.bronze.aws_s3_bucket_lifecycle_configuration.this will be created
+  + resource "aws_s3_bucket_lifecycle_configuration" "this" {
+      + bucket                                 = (known after apply)
+      + expected_bucket_owner                  = (known after apply)
+      + id                                     = (known after apply)
+      + region                                 = "ap-southeast-1"
+      + transition_default_minimum_object_size = "all_storage_classes_128K"
+
+      + rule {
+          + id     = "abort-incomplete-uploads"
+          + status = "Enabled"
+            # (1 unchanged attribute hidden)
+
+          + abort_incomplete_multipart_upload {
+              + days_after_initiation = 1
+            }
+
+          + filter {
+                # (1 unchanged attribute hidden)
+            }
+        }
+      + rule {
+          + id     = "expire-old-versions"
+          + status = "Enabled"
+            # (1 unchanged attribute hidden)
+
+          + expiration {
+              + days                         = 0
+              + expired_object_delete_marker = true
+            }
+
+          + filter {
+                # (1 unchanged attribute hidden)
+            }
+
+          + noncurrent_version_expiration {
+              + noncurrent_days = 30
+            }
+        }
+    }
+
+  # module.bronze.aws_s3_bucket_policy.this will be created
+  + resource "aws_s3_bucket_policy" "this" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+      + policy = (known after apply)
+      + region = "ap-southeast-1"
+    }
+
+  # module.bronze.aws_s3_bucket_public_access_block.this will be created
+  + resource "aws_s3_bucket_public_access_block" "this" {
+      + block_public_acls       = true
+      + block_public_policy     = true
+      + bucket                  = (known after apply)
+      + id                      = (known after apply)
+      + ignore_public_acls      = true
+      + region                  = "ap-southeast-1"
+      + restrict_public_buckets = true
+    }
+
+  # module.bronze.aws_s3_bucket_versioning.this[0] will be created
+  + resource "aws_s3_bucket_versioning" "this" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+      + region = "ap-southeast-1"
+
+      + versioning_configuration {
+          + mfa_delete = (known after apply)
+          + status     = "Enabled"
+        }
+    }
+
+  # module.catalog.aws_athena_workgroup.this will be created
+  + resource "aws_athena_workgroup" "this" {
+      + arn           = (known after apply)
+      + force_destroy = false
+      + id            = (known after apply)
+      + name          = "quake-lake"
+      + region        = "ap-southeast-1"
+      + state         = "ENABLED"
+      + tags_all      = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+
+      + configuration {
+          + bytes_scanned_cutoff_per_query          = 1000000000
+          + enable_minimum_encryption_configuration = (known after apply)
+          + enforce_workgroup_configuration         = true
+          + publish_cloudwatch_metrics_enabled      = false
+          + requester_pays_enabled                  = false
+
+          + engine_version {
+              + effective_engine_version = (known after apply)
+              + selected_engine_version  = "Athena engine version 3"
+            }
+
+          + result_configuration {
+              + output_location = (known after apply)
+
+              + encryption_configuration {
+                  + encryption_option = "SSE_S3"
+                }
+            }
+        }
+    }
+
+  # module.catalog.aws_glue_catalog_database.this will be created
+  + resource "aws_glue_catalog_database" "this" {
+      + arn          = (known after apply)
+      + catalog_id   = (known after apply)
+      + id           = (known after apply)
+      + location_uri = (known after apply)
+      + name         = "quake_lake"
+      + region       = "ap-southeast-1"
+      + tags_all     = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+
+      + create_table_default_permission (known after apply)
+    }
+
+  # module.catalog.aws_glue_catalog_table.silver_events will be created
+  + resource "aws_glue_catalog_table" "silver_events" {
+      + arn           = (known after apply)
+      + catalog_id    = (known after apply)
+      + database_name = "quake_lake"
+      + description   = "Silver events (quake_lake.silver.EVENTS): one row per event, USGS and BMKG."
+      + id            = (known after apply)
+      + name          = "silver_events"
+      + parameters    = {
+          + "EXTERNAL"                = "TRUE"
+          + "classification"          = "parquet"
+          + "projection.enabled"      = "true"
+          + "projection.month.digits" = "2"
+          + "projection.month.range"  = "1,12"
+          + "projection.month.type"   = "integer"
+          + "projection.year.range"   = "2015,2040"
+          + "projection.year.type"    = "integer"
+        }
+      + region        = "ap-southeast-1"
+      + table_type    = "EXTERNAL_TABLE"
+
+      + partition_index (known after apply)
+
+      + partition_keys {
+          + name = "year"
+          + type = "int"
+        }
+      + partition_keys {
+          + name = "month"
+          + type = "int"
+        }
+
+      + storage_descriptor {
+          + additional_locations = (known after apply)
+          + bucket_columns       = (known after apply)
+          + input_format         = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+          + location             = (known after apply)
+          + output_format        = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+          + parameters           = (known after apply)
+
+          + columns {
+              + name       = "event_id"
+              + parameters = (known after apply)
+              + type       = "string"
+            }
+          + columns {
+              + name       = "source"
+              + parameters = (known after apply)
+              + type       = "string"
+            }
+          + columns {
+              + name       = "time"
+              + parameters = (known after apply)
+              + type       = "timestamp"
+            }
+          + columns {
+              + name       = "latitude"
+              + parameters = (known after apply)
+              + type       = "double"
+            }
+          + columns {
+              + name       = "longitude"
+              + parameters = (known after apply)
+              + type       = "double"
+            }
+          + columns {
+              + name       = "depth_km"
+              + parameters = (known after apply)
+              + type       = "double"
+            }
+          + columns {
+              + name       = "magnitude"
+              + parameters = (known after apply)
+              + type       = "double"
+            }
+          + columns {
+              + name       = "mag_type"
+              + parameters = (known after apply)
+              + type       = "string"
+            }
+          + columns {
+              + name       = "place"
+              + parameters = (known after apply)
+              + type       = "string"
+            }
+          + columns {
+              + name       = "event_type"
+              + parameters = (known after apply)
+              + type       = "string"
+            }
+          + columns {
+              + name       = "updated"
+              + parameters = (known after apply)
+              + type       = "timestamp"
+            }
+          + columns {
+              + name       = "bmkg_id"
+              + parameters = (known after apply)
+              + type       = "string"
+            }
+          + columns {
+              + name       = "province_code"
+              + parameters = (known after apply)
+              + type       = "string"
+            }
+          + columns {
+              + name       = "province"
+              + parameters = (known after apply)
+              + type       = "string"
+            }
+          + columns {
+              + name       = "province_km"
+              + parameters = (known after apply)
+              + type       = "double"
+            }
+          + columns {
+              + name       = "bronze_key"
+              + parameters = (known after apply)
+              + type       = "string"
+            }
+
+          + ser_de_info {
+              + parameters            = (known after apply)
+              + serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+            }
+        }
+
+      + view_definition (known after apply)
+    }
+
+  # module.catalog.aws_iam_policy.query will be created
+  + resource "aws_iam_policy" "query" {
+      + arn              = (known after apply)
+      + attachment_count = (known after apply)
+      + description      = "Query silver_events with Athena in the quake-lake workgroup."
+      + id               = (known after apply)
+      + name             = "quake-lake-query"
+      + name_prefix      = (known after apply)
+      + path             = "/"
+      + policy           = (known after apply)
+      + policy_id        = (known after apply)
+      + tags_all         = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+    }
+
+  # module.gold.aws_s3_bucket.this will be created
+  + resource "aws_s3_bucket" "this" {
+      + acceleration_status         = (known after apply)
+      + acl                         = (known after apply)
+      + arn                         = (known after apply)
+      + bucket                      = (known after apply)
+      + bucket_domain_name          = (known after apply)
+      + bucket_namespace            = (known after apply)
+      + bucket_prefix               = "quake-lake-gold-"
+      + bucket_region               = (known after apply)
+      + bucket_regional_domain_name = (known after apply)
+      + force_destroy               = false
+      + hosted_zone_id              = (known after apply)
+      + id                          = (known after apply)
+      + object_lock_enabled         = (known after apply)
+      + policy                      = (known after apply)
+      + region                      = "ap-southeast-1"
+      + request_payer               = (known after apply)
+      + tags_all                    = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+      + website_domain              = (known after apply)
+      + website_endpoint            = (known after apply)
+
+      + cors_rule (known after apply)
+
+      + grant (known after apply)
+
+      + lifecycle_rule (known after apply)
+
+      + logging (known after apply)
+
+      + object_lock_configuration (known after apply)
+
+      + replication_configuration (known after apply)
+
+      + server_side_encryption_configuration (known after apply)
+
+      + versioning (known after apply)
+
+      + website (known after apply)
+    }
+
+  # module.gold.aws_s3_bucket_lifecycle_configuration.this will be created
+  + resource "aws_s3_bucket_lifecycle_configuration" "this" {
+      + bucket                                 = (known after apply)
+      + expected_bucket_owner                  = (known after apply)
+      + id                                     = (known after apply)
+      + region                                 = "ap-southeast-1"
+      + transition_default_minimum_object_size = "all_storage_classes_128K"
+
+      + rule {
+          + id     = "abort-incomplete-uploads"
+          + status = "Enabled"
+            # (1 unchanged attribute hidden)
+
+          + abort_incomplete_multipart_upload {
+              + days_after_initiation = 1
+            }
+
+          + filter {
+                # (1 unchanged attribute hidden)
+            }
+        }
+    }
+
+  # module.gold.aws_s3_bucket_policy.this will be created
+  + resource "aws_s3_bucket_policy" "this" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+      + policy = (known after apply)
+      + region = "ap-southeast-1"
+    }
+
+  # module.gold.aws_s3_bucket_public_access_block.this will be created
+  + resource "aws_s3_bucket_public_access_block" "this" {
+      + block_public_acls       = true
+      + block_public_policy     = true
+      + bucket                  = (known after apply)
+      + id                      = (known after apply)
+      + ignore_public_acls      = true
+      + region                  = "ap-southeast-1"
+      + restrict_public_buckets = true
+    }
+
+  # module.ingest.aws_cloudwatch_event_rule.this["bmkg"] will be created
+  + resource "aws_cloudwatch_event_rule" "this" {
+      + arn                 = (known after apply)
+      + event_bus_name      = "default"
+      + force_destroy       = false
+      + id                  = (known after apply)
+      + name                = "quake-lake-ingest-bmkg"
+      + name_prefix         = (known after apply)
+      + region              = "ap-southeast-1"
+      + schedule_expression = "rate(1 hour)"
+      + tags_all            = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+    }
+
+  # module.ingest.aws_cloudwatch_event_rule.this["usgs"] will be created
+  + resource "aws_cloudwatch_event_rule" "this" {
+      + arn                 = (known after apply)
+      + event_bus_name      = "default"
+      + force_destroy       = false
+      + id                  = (known after apply)
+      + name                = "quake-lake-ingest-usgs"
+      + name_prefix         = (known after apply)
+      + region              = "ap-southeast-1"
+      + schedule_expression = "cron(0 0 * * ? *)"
+      + tags_all            = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+    }
+
+  # module.ingest.aws_cloudwatch_event_target.this["bmkg"] will be created
+  + resource "aws_cloudwatch_event_target" "this" {
+      + arn            = (known after apply)
+      + event_bus_name = "default"
+      + force_destroy  = false
+      + id             = (known after apply)
+      + input          = jsonencode(
+            {
+              + sources = [
+                  + "bmkg",
+                ]
+            }
+        )
+      + region         = "ap-southeast-1"
+      + rule           = "quake-lake-ingest-bmkg"
+      + target_id      = (known after apply)
+    }
+
+  # module.ingest.aws_cloudwatch_event_target.this["usgs"] will be created
+  + resource "aws_cloudwatch_event_target" "this" {
+      + arn            = (known after apply)
+      + event_bus_name = "default"
+      + force_destroy  = false
+      + id             = (known after apply)
+      + input          = jsonencode(
+            {
+              + days    = 7
+              + sources = [
+                  + "usgs",
+                ]
+            }
+        )
+      + region         = "ap-southeast-1"
+      + rule           = "quake-lake-ingest-usgs"
+      + target_id      = (known after apply)
+    }
+
+  # module.ingest.aws_cloudwatch_log_group.this will be created
+  + resource "aws_cloudwatch_log_group" "this" {
+      + arn                         = (known after apply)
+      + deletion_protection_enabled = (known after apply)
+      + id                          = (known after apply)
+      + log_group_class             = (known after apply)
+      + name                        = "/aws/lambda/quake-lake-ingest"
+      + name_prefix                 = (known after apply)
+      + region                      = "ap-southeast-1"
+      + retention_in_days           = 30
+      + skip_destroy                = false
+      + tags_all                    = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+    }
+
+  # module.ingest.aws_iam_role.this will be created
+  + resource "aws_iam_role" "this" {
+      + arn                   = (known after apply)
+      + assume_role_policy    = jsonencode(
+            {
+              + Statement = [
+                  + {
+                      + Action    = "sts:AssumeRole"
+                      + Effect    = "Allow"
+                      + Principal = {
+                          + Service = "lambda.amazonaws.com"
+                        }
+                    },
+                ]
+              + Version   = "2012-10-17"
+            }
+        )
+      + create_date           = (known after apply)
+      + force_detach_policies = false
+      + id                    = (known after apply)
+      + managed_policy_arns   = (known after apply)
+      + max_session_duration  = 3600
+      + name                  = "quake-lake-ingest"
+      + name_prefix           = (known after apply)
+      + path                  = "/"
+      + tags_all              = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+      + unique_id             = (known after apply)
+
+      + inline_policy (known after apply)
+    }
+
+  # module.ingest.aws_iam_role_policy.this will be created
+  + resource "aws_iam_role_policy" "this" {
+      + id          = (known after apply)
+      + name        = "ingest"
+      + name_prefix = (known after apply)
+      + policy      = (known after apply)
+      + role        = (known after apply)
+    }
+
+  # module.ingest.aws_lambda_function.this will be created
+  + resource "aws_lambda_function" "this" {
+      + architectures                  = (known after apply)
+      + arn                            = (known after apply)
+      + code_sha256                    = (known after apply)
+      + filename                       = "./.build/ingest.zip"
+      + function_name                  = "quake-lake-ingest"
+      + handler                        = "quake_lake.handler.lambda_handler"
+      + id                             = (known after apply)
+      + invoke_arn                     = (known after apply)
+      + last_modified                  = (known after apply)
+      + memory_size                    = 256
+      + package_type                   = "Zip"
+      + publish                        = false
+      + qualified_arn                  = (known after apply)
+      + qualified_invoke_arn           = (known after apply)
+      + region                         = "ap-southeast-1"
+      + reserved_concurrent_executions = -1
+      + response_streaming_invoke_arn  = (known after apply)
+      + role                           = (known after apply)
+      + runtime                        = "python3.12"
+      + signing_job_arn                = (known after apply)
+      + signing_profile_version_arn    = (known after apply)
+      + skip_destroy                   = false
+      + source_code_hash               = "EytSGLSWarxBFn377y6GQCDpqZMmPkSUYAS0VsT43DM="
+      + source_code_size               = (known after apply)
+      + tags_all                       = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+      + timeout                        = 300
+      + version                        = (known after apply)
+
+      + environment {
+          + variables = (known after apply)
+        }
+
+      + ephemeral_storage (known after apply)
+
+      + logging_config {
+          + log_format = "Text"
+          + log_group  = "/aws/lambda/quake-lake-ingest"
+        }
+
+      + tracing_config (known after apply)
+    }
+
+  # module.ingest.aws_lambda_permission.this["bmkg"] will be created
+  + resource "aws_lambda_permission" "this" {
+      + action              = "lambda:InvokeFunction"
+      + function_name       = "quake-lake-ingest"
+      + id                  = (known after apply)
+      + principal           = "events.amazonaws.com"
+      + region              = "ap-southeast-1"
+      + source_arn          = (known after apply)
+      + statement_id        = "events-bmkg"
+      + statement_id_prefix = (known after apply)
+    }
+
+  # module.ingest.aws_lambda_permission.this["usgs"] will be created
+  + resource "aws_lambda_permission" "this" {
+      + action              = "lambda:InvokeFunction"
+      + function_name       = "quake-lake-ingest"
+      + id                  = (known after apply)
+      + principal           = "events.amazonaws.com"
+      + region              = "ap-southeast-1"
+      + source_arn          = (known after apply)
+      + statement_id        = "events-usgs"
+      + statement_id_prefix = (known after apply)
+    }
+
+  # module.silver.aws_s3_bucket.this will be created
+  + resource "aws_s3_bucket" "this" {
+      + acceleration_status         = (known after apply)
+      + acl                         = (known after apply)
+      + arn                         = (known after apply)
+      + bucket                      = (known after apply)
+      + bucket_domain_name          = (known after apply)
+      + bucket_namespace            = (known after apply)
+      + bucket_prefix               = "quake-lake-silver-"
+      + bucket_region               = (known after apply)
+      + bucket_regional_domain_name = (known after apply)
+      + force_destroy               = false
+      + hosted_zone_id              = (known after apply)
+      + id                          = (known after apply)
+      + object_lock_enabled         = (known after apply)
+      + policy                      = (known after apply)
+      + region                      = "ap-southeast-1"
+      + request_payer               = (known after apply)
+      + tags_all                    = {
+          + "managed-by" = "terraform"
+          + "project"    = "quake-lake"
+        }
+      + website_domain              = (known after apply)
+      + website_endpoint            = (known after apply)
+
+      + cors_rule (known after apply)
+
+      + grant (known after apply)
+
+      + lifecycle_rule (known after apply)
+
+      + logging (known after apply)
+
+      + object_lock_configuration (known after apply)
+
+      + replication_configuration (known after apply)
+
+      + server_side_encryption_configuration (known after apply)
+
+      + versioning (known after apply)
+
+      + website (known after apply)
+    }
+
+  # module.silver.aws_s3_bucket_lifecycle_configuration.this will be created
+  + resource "aws_s3_bucket_lifecycle_configuration" "this" {
+      + bucket                                 = (known after apply)
+      + expected_bucket_owner                  = (known after apply)
+      + id                                     = (known after apply)
+      + region                                 = "ap-southeast-1"
+      + transition_default_minimum_object_size = "all_storage_classes_128K"
+
+      + rule {
+          + id     = "abort-incomplete-uploads"
+          + status = "Enabled"
+            # (1 unchanged attribute hidden)
+
+          + abort_incomplete_multipart_upload {
+              + days_after_initiation = 1
+            }
+
+          + filter {
+                # (1 unchanged attribute hidden)
+            }
+        }
+    }
+
+  # module.silver.aws_s3_bucket_policy.this will be created
+  + resource "aws_s3_bucket_policy" "this" {
+      + bucket = (known after apply)
+      + id     = (known after apply)
+      + policy = (known after apply)
+      + region = "ap-southeast-1"
+    }
+
+  # module.silver.aws_s3_bucket_public_access_block.this will be created
+  + resource "aws_s3_bucket_public_access_block" "this" {
+      + block_public_acls       = true
+      + block_public_policy     = true
+      + bucket                  = (known after apply)
+      + id                      = (known after apply)
+      + ignore_public_acls      = true
+      + region                  = "ap-southeast-1"
+      + restrict_public_buckets = true
+    }
+
+Plan: 32 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + athena               = {
+      + database  = "quake_lake"
+      + workgroup = "quake-lake"
+    }
+  + buckets              = {
+      + athena_results = (known after apply)
+      + bronze         = (known after apply)
+      + gold           = (known after apply)
+      + silver         = (known after apply)
+    }
+  + ingest_function      = "quake-lake-ingest"
+  + ingest_package_bytes = 24956
+  + policies             = {
+      + pipeline = (known after apply)
+      + query    = (known after apply)
+    }
+
+─────────────────────────────────────────────────────────────────────────────
+
+Note: You didn't use the -out option to save this plan, so Terraform can't
+guarantee to take exactly these actions if you run "terraform apply" now.

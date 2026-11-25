@@ -1,4 +1,4 @@
-# Measured results (S7 2026-11-20, S8 2026-11-21, S9 2026-11-22, S10 2026-11-23)
+# Measured results (S7 2026-11-20, S8 2026-11-21, S9 2026-11-22, S10 2026-11-23, S11 2026-11-25)
 
 Everything was measured on one PC: Windows 11, Ryzen 7 9800X3D, a home connection in
 Indonesia, Docker 29.9.3. The README quotes these files.
@@ -14,9 +14,24 @@ Indonesia, Docker 29.9.3. The README quotes these files.
 | `airflow-s10-before-gold-fix.json` | The same measurement, run once between the compose and DAG fixes and the gold fix (19:57 to 20:03 UTC on 2026-11-24): the run whose mart comparison found one differing row (see the notes below) | the code of commit `c8b8865` except `agg_province_magnitude.sql`, which was still the version before `ebe0787`; its printed JSON, saved by hand |
 | `backfill-overlap-s10.log` | Two 2-day backfills on the compose stack: without `--max-active-runs` both runs started at once and the second's `gold` failed on DuckDB's file lock (then succeeded on its retry); with `--max-active-runs 1` they ran one after the other | by hand, with the commands in the file's header; run times from the REST API, the task lines from each task's attempt-1 log |
 | `deadline-s10.log` | The deadline alert firing: the scheduler's two log lines for a manual run whose deadline was set to 1 s after it was queued | by hand: `interval=timedelta(seconds=1)` in `dags/quake_lake_daily.py` (the committed value is 1 hour), a run triggered through the REST API, `docker compose logs airflow-scheduler`; the file's header says which lines |
+| `lambda-s11.log` | What the ingest Lambda needs, in `public.ecr.aws/lambda/python:3.12` (pinned by digest) writing to the MinIO from `compose.yaml`, at 18:09 UTC on 2026-11-25: the peak memory (`ru_maxrss`) of the handler's process for a BMKG poll, a 7-day USGS fetch and both; then, for 128, 256 and 512 MB, three cold starts and one warm invocation each (`{}`: both sources) under the Lambda emulator with `docker --cpus` set to the CPU share Lambda gives that memory (MB / 1,769). Raw emulator lines; their own "Memory Size" and "Max Memory Used" (3008 MB) are the emulator's defaults, not measurements. The network to BMKG and USGS adds noise (warm invocations 0.95 to 3.1 s) | `make minio`, then `bash scripts/measure_lambda.sh > docs/results/lambda-s11.log` |
+| `plan-s11.txt` | `terraform plan` of `infra/` with no AWS account (`-var plan_without_credentials=true`): 32 resources. The same bytes on Windows and in `hashicorp/terraform:1.17.1` on Linux (compared with `diff`), including the Lambda zip's `source_code_hash` | `make plan`, or the command in the file's first line |
+| `aws-cost-s11.json` | The monthly AWS cost of `infra/` for months 1 and 12, from the AWS Price List bulk API for `ap-southeast-1` (each price with its source URL and publication date), the usage measured in `lambda-s11.log`, `backfill-s7.json` and `silver-s8.json`, and the assumptions in the file | `uv run python scripts/aws_cost.py` (downloads about 3 MB of price lists); explained in [`../aws-cost-estimate.md`](../aws-cost-estimate.md) |
 | `lambda-s7.log` | Three cold starts of the handler in `public.ecr.aws/lambda/python:3.12` under its local emulator, one live invocation each (`{"days": 2}`: three BMKG feeds and two days of USGS), with the emulator's raw `INIT REPORT` / `REPORT` lines and the handler's log | `docker run` with `src/` mounted at `/var/task`, then a `curl` to the invocation URL, as in the CI `docker` job |
 
 ## Measured by hand (no file)
+
+- **Test suite, S11:** `uv run pytest -q -p no:cacheprovider`, three runs with MinIO up:
+  15.89, 13.88 and 13.95 s, 189 passed and 15 skipped on Windows (2 more than S10: the Glue
+  column checks in `tests/test_infra.py`).
+- **Terraform, S11:** `make infra-check` 7.2 s and `make plan` 3.0 s on this PC once
+  `infra/` is initialised (`terraform plan` alone 2.0 s); the first `terraform init`
+  downloaded both providers in 9.8 s. On GitHub the `terraform` job took 30 s (run
+  45675288281). The tests' 12 planted bugs, one at a time (wider Lambda or query
+  permissions, a wrong projection setting, public access, the TLS condition, the
+  old-version rule, the workgroup's enforced settings, a schedule's event, the log group):
+  11 made `terraform test` fail; changing
+  `days_after_initiation` from 1 to 7 did not.
 
 - **gzip, interleaved:** the 12 monthly windows of 2018, fetched 3 times in each mode,
   alternating plain and gzip so network drift hits both (36 requests each): median request
