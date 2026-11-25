@@ -84,6 +84,11 @@ run "a_versioned_expiring_bucket_gets_both_rules" {
     error_message = "Expected the upload, old-version and expiry rules, in that order."
   }
   assert {
+    # (A rule's filter can't be checked here: the mock fills its computed prefix at random.)
+    condition     = alltrue([for r in aws_s3_bucket_lifecycle_configuration.this.rule : r.status == "Enabled"])
+    error_message = "Every rule is on."
+  }
+  assert {
     condition = (
       aws_s3_bucket_lifecycle_configuration.this.rule[1].noncurrent_version_expiration[0].noncurrent_days == 30
       && aws_s3_bucket_lifecycle_configuration.this.rule[1].expiration[0].expired_object_delete_marker
@@ -209,6 +214,7 @@ run "the_catalog_reads_silver_and_the_query_policy_is_scoped" {
       aws_glue_catalog_table.silver_events.parameters.classification == "parquet"
       && aws_glue_catalog_table.silver_events.storage_descriptor[0].ser_de_info[0].serialization_library == "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
       && aws_glue_catalog_table.silver_events.storage_descriptor[0].input_format == "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+      && aws_glue_catalog_table.silver_events.storage_descriptor[0].output_format == "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
     )
     error_message = "Silver is Parquet: the table must read it with the Parquet SerDe and input format."
   }
@@ -309,7 +315,8 @@ run "the_whole_configuration" {
     error_message = "Bronze, the only copy of BMKG's snapshots, keeps old versions; only query results expire, after 7 days."
   }
   # The wiring between modules: each reads and writes the right bucket. (Each module takes
-  # a whole bucket module, so a name and an ARN can't come from two different buckets.)
+  # a whole bucket module, so a call can't pair one bucket's name with another's ARN by
+  # mistake; a hand-written object could, and isn't checked here.)
   assert {
     condition     = output.ingest.function.bronze_uri == "s3://${module.bronze.bucket}"
     error_message = "The Lambda writes into bronze."
@@ -354,5 +361,17 @@ run "the_whole_configuration" {
   assert {
     condition     = output.athena.database == "quake_lake" && output.athena.workgroup == "quake-lake"
     error_message = "Athena names come from var.name, with an underscore for Glue."
+  }
+  assert {
+    condition = (
+      output.buckets == {
+        bronze         = module.bronze.bucket
+        silver         = module.silver.bucket
+        gold           = module.gold.bucket
+        athena_results = module.athena_results.bucket
+      }
+      && output.policies == { pipeline = aws_iam_policy.pipeline.arn, query = module.catalog.query_policy_arn }
+    )
+    error_message = "The outputs people copy (BRONZE_URI, SILVER_URI, the policies to attach) name the right things."
   }
 }

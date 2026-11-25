@@ -129,7 +129,10 @@ output "arn" {
 output "retention" {
   description = "Whether old versions are kept, and after how many days objects expire (null: never)."
   value = {
-    versioned   = length(aws_s3_bucket_versioning.this) == 1
-    expire_days = one([for r in aws_s3_bucket_lifecycle_configuration.this.rule : r.expiration[0].days if r.id == "expire-objects"])
+    versioned = length(aws_s3_bucket_versioning.this) == 1
+    expire_days = one([
+      for r in aws_s3_bucket_lifecycle_configuration.this.rule :
+      r.expiration[0].days if r.id == "expire-objects" && r.status == "Enabled"
+    ])
   }
 }

@@ -32,7 +32,7 @@ module "ingest" {
   function_name = "${var.name}-ingest"
   source_dir    = "${path.root}/../src"
   package_path  = "${path.root}/.build/ingest.zip"
-  bronze        = module.bronze # name and ARN of one bucket, so they can't come from two
+  bronze        = module.bronze # the name and ARN of one bucket, passed together
   schedules = {
     # BMKG's feeds only hold the latest events, so they are polled every hour;
     # USGS once a day, 7 days back, which also picks up a week of revisions.
