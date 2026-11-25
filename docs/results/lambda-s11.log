@@ -1,0 +1,41 @@
+# 2026-11-25T18:08:57Z peak memory of the handler process (BMKG, then USGS 7 days, then both)
+{"event": {"sources": ["bmkg"]}, "seconds": 0.553, "objects": 3, "bytes": 9614, "maxrss_mib": 50.8}
+{"event": {"sources": ["usgs"], "days": 7}, "seconds": 0.712, "objects": 1, "bytes": 14701, "maxrss_mib": 51.3}
+{"event": {}, "seconds": 0.985, "objects": 4, "bytes": 24315, "maxrss_mib": 51.3}
+# 2026-11-25T18:09:00Z cold start by memory size; event {} (3 BMKG feeds + 7 days of USGS)
+## memory 128 MB, --cpus 0.0724, repeat 1: cold invocation, then a warm one
+25 Nov 2026 18:09:03,727 [INFO] (rapid) INIT REPORT(durationMs: 1859.435000)
+REPORT RequestId: ea3ee1d1-badf-4dc9-a28c-18452ab86946	Init Duration: 0.06 ms	Duration: 4188.34 ms	Billed Duration: 4189 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+REPORT RequestId: d893df8c-7466-4b37-ba4d-01511401cad2	Duration: 1996.08 ms	Billed Duration: 1997 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+## memory 128 MB, --cpus 0.0724, repeat 2: cold invocation, then a warm one
+25 Nov 2026 18:09:11,925 [INFO] (rapid) INIT REPORT(durationMs: 1854.223000)
+REPORT RequestId: d9ed0004-8976-44ba-8aa7-146e6bad934a	Init Duration: 0.02 ms	Duration: 4181.89 ms	Billed Duration: 4182 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+REPORT RequestId: e9d5dfdd-3a50-4a0b-8eb6-b8a3dbdea85c	Duration: 971.05 ms	Billed Duration: 972 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+## memory 128 MB, --cpus 0.0724, repeat 3: cold invocation, then a warm one
+25 Nov 2026 18:09:18,933 [INFO] (rapid) INIT REPORT(durationMs: 1747.062000)
+REPORT RequestId: 03bd1860-b1b0-4392-9b2e-38e90773b997	Init Duration: 0.03 ms	Duration: 4032.57 ms	Billed Duration: 4033 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+REPORT RequestId: 7b3ddcdf-e477-458f-bada-ba86092d3212	Duration: 950.07 ms	Billed Duration: 951 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+## memory 256 MB, --cpus 0.1447, repeat 1: cold invocation, then a warm one
+25 Nov 2026 18:09:23,815 [INFO] (rapid) INIT REPORT(durationMs: 805.175000)
+REPORT RequestId: a3afc7a6-c0e9-4dc5-b97d-81d5f3b1c0fc	Init Duration: 0.04 ms	Duration: 3513.89 ms	Billed Duration: 3514 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+REPORT RequestId: d950bc2a-3405-456a-b0e1-b90053ba7e37	Duration: 2971.02 ms	Billed Duration: 2972 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+## memory 256 MB, --cpus 0.1447, repeat 2: cold invocation, then a warm one
+25 Nov 2026 18:09:31,117 [INFO] (rapid) INIT REPORT(durationMs: 805.462000)
+REPORT RequestId: 5b6cf600-4017-4708-92fa-11f6e156328b	Init Duration: 0.02 ms	Duration: 3545.22 ms	Billed Duration: 3546 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+REPORT RequestId: e83272c5-3cb4-41fc-849e-88d24729ae33	Duration: 952.12 ms	Billed Duration: 953 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+## memory 256 MB, --cpus 0.1447, repeat 3: cold invocation, then a warm one
+25 Nov 2026 18:09:36,548 [INFO] (rapid) INIT REPORT(durationMs: 907.058000)
+REPORT RequestId: 97f50b5a-1c98-4341-a596-8e11ac658bac	Init Duration: 0.03 ms	Duration: 2442.75 ms	Billed Duration: 2443 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+REPORT RequestId: ccac847d-6c08-46a7-b5fa-1e914cb1b310	Duration: 3098.07 ms	Billed Duration: 3099 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+## memory 512 MB, --cpus 0.2894, repeat 1: cold invocation, then a warm one
+25 Nov 2026 18:09:42,411 [INFO] (rapid) INIT REPORT(durationMs: 411.058000)
+REPORT RequestId: c280803b-e2c0-40d3-a655-2d224de1d82f	Init Duration: 0.02 ms	Duration: 1925.47 ms	Billed Duration: 1926 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+REPORT RequestId: fc932ca8-bc21-4153-a5e7-ae8791b4c009	Duration: 1235.37 ms	Billed Duration: 1236 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+## memory 512 MB, --cpus 0.2894, repeat 2: cold invocation, then a warm one
+25 Nov 2026 18:09:46,324 [INFO] (rapid) INIT REPORT(durationMs: 339.472000)
+REPORT RequestId: bfe2e170-9be9-423a-ba7d-0b0ef6f965cd	Init Duration: 0.04 ms	Duration: 2825.31 ms	Billed Duration: 2826 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+REPORT RequestId: ecbaf6d0-b23f-4ffe-8d0e-a277f9d7c090	Duration: 1219.56 ms	Billed Duration: 1220 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+## memory 512 MB, --cpus 0.2894, repeat 3: cold invocation, then a warm one
+25 Nov 2026 18:09:51,234 [INFO] (rapid) INIT REPORT(durationMs: 389.156000)
+REPORT RequestId: 7718c907-28f1-4c4b-ac38-0818d7dae02e	Init Duration: 0.04 ms	Duration: 1829.74 ms	Billed Duration: 1830 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
+REPORT RequestId: 053c5c32-5811-4c60-ab1d-281b91575bba	Duration: 2229.68 ms	Billed Duration: 2230 ms	Memory Size: 3008 MB	Max Memory Used: 3008 MB	
