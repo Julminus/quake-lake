@@ -87,11 +87,13 @@ def tests_fail() -> bool:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--out", default="docs/results/mutations-s12.txt", help="from the repo root")
+    p.add_argument("--out", type=Path, default=ROOT / "docs" / "results" / "mutations-s12.txt")
     args = p.parse_args()
     dirty = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", str(SRC)], cwd=ROOT).returncode
     if dirty:
         raise SystemExit(f"{SRC} has uncommitted changes; commit or stash them first")
+    if not args.out.parent.is_dir():  # the report is written last; fail before the runs
+        raise SystemExit(f"no folder {args.out.parent}")
     original = SRC.read_text(encoding="utf-8")
     lines = []
     try:
@@ -112,7 +114,7 @@ def main() -> None:
         raise SystemExit("the tests fail on the restored code")
     caught = sum(line.startswith("caught") for line in lines)
     lines.append(f"{caught} of {len(MUTATIONS)} caught")
-    Path(ROOT, args.out).write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    args.out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     print(lines[-1])
 
 
