@@ -25,7 +25,7 @@ from websockets.sync.client import connect
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 READY = """
 document.querySelectorAll('[data-testid="stMetric"]').length === 4
-  && document.querySelector('#deckgl-overlay, canvas') !== null
+  && document.querySelector('[data-testid="stDeckGlJsonChart"] canvas') !== null
   && document.querySelectorAll('[data-testid="stVegaLiteChart"] canvas, '
        + '[data-testid="stVegaLiteChart"] svg').length >= 2
 """

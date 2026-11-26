@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from quake_lake import dashboard, silver
@@ -85,11 +86,15 @@ def main() -> None:
         marts["fct_earthquakes_in_indonesia"] = indonesian.fetchone()[0]
 
     os.environ["GOLD_DB"] = env["GOLD_DB"]
-    renders = []
-    for _ in range(3):  # the first reads gold; the others are served from Streamlit's cache
+    # The first render in a process also warms up imports; then three with the rows in
+    # Streamlit's cache, and three with the cache cleared (each reads gold again).
+    renders: dict[str, list[float]] = {"first": [], "cached": [], "cache_cleared": []}
+    for kind in ["first"] + ["cached"] * 3 + ["cache_cleared"] * 3:
+        if kind == "cache_cleared":
+            st.cache_data.clear()
         t = time.perf_counter()
         at = AppTest.from_file(dashboard.__file__, default_timeout=120).run()
-        renders.append(round(time.perf_counter() - t, 2))
+        renders[kind].append(round(time.perf_counter() - t, 3))
         if at.exception:
             raise SystemExit(f"the dashboard failed: {at.exception}")
     t = time.perf_counter()
@@ -120,7 +125,6 @@ def main() -> None:
         },
         "gold": marts,
         "checks": {
-            "bronze_shape_check_per_object": 1,
             "silver_typed_columns": len(silver.RECORD.columns),
             "silver_value_checks": record_checks + len(silver.RECORD.checks),
             "dbt_nodes": dict(kinds),
@@ -131,6 +135,7 @@ def main() -> None:
             "rows_loaded": rows,
             "query_seconds": load_seconds,
             "apptest_render_seconds": renders,
+            "map_json_bytes": len(at.get("deck_gl_json_chart")[0].proto.json),
             "metrics": {m.label: m.value for m in at.metric},
             "top_provinces": at.dataframe[0].value.head(5).to_dict("records"),
         },
