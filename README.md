@@ -66,7 +66,8 @@ project.
 - **The dashboard:** its query returns all 26,815 earthquakes in 0.04 s. Rendered headless
   with Streamlit's `AppTest`, the page takes 0.25 to 0.27 s with the rows in Streamlit's
   cache and 0.28 to 0.29 s when it reads gold again (0.72 s the first time in a process,
-  mostly warm-up); the map's points are 5.6 MB of JSON. With the default filters it shows
+  mostly warm-up); the map's points are 5.6 MB of JSON as pydeck sends them, indented. With
+  the default filters it shows
   20,654 Indonesian earthquakes since 2015, 2,173 of M5 and up, 150 of M6 and up, the
   largest M7.8, and
   Maluku (3,945), Maluku Utara (3,618) and Sulawesi Utara (2,061) at the top of the
@@ -259,18 +260,22 @@ From empty volumes, with the images built (`scripts/measure_airflow.py`):
 
 ### Tests
 
-- **219 offline tests** (recorded responses and small built records) at 100% branch
-  coverage of the Python package (CI fails below 90%). On Windows 206 of them run, in 16.2
+- **220 offline tests** (recorded responses and small built records) at 100% branch
+  coverage of the Python package (CI fails below 90%). On Windows 207 of them run, in 16.1
   to 16.4 s (three runs; about 25 s with coverage); the other 13 are the 12 that test the
   Airflow DAG and need Airflow, which CI runs inside its image, and one concurrency test
   that runs on Linux only. 5 run dbt (about 8 s), and one of those also checks the
   dashboard's province and month counts against the aggregate marts. 8 check `infra/` from
   Python (the Glue table matches silver's schema; the cost estimate reads the right numbers
-  from the Terraform). 11 test the dashboard, 9 of them by running it headless with
-  Streamlit's `AppTest` on a small gold (the filters, read back from the metrics, the
-  table, the map's points and both charts' data; a one-year gold, an event with no
-  magnitude or no province; a rebuilt, missing or empty gold; 3 s in all): of 18 bugs
-  planted in the dashboard one at a time, all 18 fail a test. Two more run against a real
+  from the Terraform). 12 test the dashboard, 10 of them by running it headless with
+  Streamlit's `AppTest` on a small gold: the filters, read back from the metrics, the
+  table, the map's points (one exactly: position, radius, colour, tooltip) and both charts'
+  data; a one-year gold; events with no magnitude, no province or no place; a rebuilt,
+  missing or empty gold (3 s in all). `scripts/mutate_dashboard.py` plants 33 bugs in the
+  dashboard one at a time: 32 fail a test; the one left is the cache's size limit, which
+  changes memory, not the page ([`mutations-s12.txt`](docs/results/mutations-s12.txt)).
+  Two reviews got there: the first tests let 8 of a reviewer's 11 bugs through, the second
+  12 of another's 12, all in the map. Two more run against a real
   MinIO (a storage round trip and a silver rebuild); CI runs them too. The Terraform has 5
   tests of its own (above).
 
