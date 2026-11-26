@@ -16,22 +16,24 @@ import pydeck as pdk
 import streamlit as st
 
 # The fact and its province: every chart is computed from these rows, so one set of
-# filters drives them all (26,781 rows load in well under a second).
+# filters drives them all (about 27,000 rows, read in 0.04 s). A left join, so an event
+# whose province dim_province lacks still counts, under its code.
 QUERY = """
 select
     f.event_id, f.origin_time_utc, f.latitude, f.longitude, f.depth_km, f.depth_class,
-    f.magnitude, f.place, f.in_indonesia, d.province
+    f.magnitude, f.place, f.in_indonesia, coalesce(d.province, f.province_code) as province
 from fct_earthquakes as f
-join dim_province as d using (province_code)
+left join dim_province as d using (province_code)
 order by f.magnitude nulls first  -- the largest are drawn last, on top
 """
 # One blue, darker with depth (an ordinal ramp: steps 300, 450 and 650 of the dataviz
 # reference palette's blue); the chart series is the same blue.
 DEPTH_RGB = {"shallow": [109, 167, 236], "intermediate": [42, 120, 214], "deep": [16, 66, 129]}
 SERIES = "#2a78d6"
+MAX_MAGNITUDE = 10.0  # silver quarantines anything larger
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=1)  # a rebuilt gold replaces the old
 def load(path: str, version: int) -> pd.DataFrame:
     """Gold's earthquakes; `version` is the file's mtime, so a rebuilt gold loads again."""
     # Read-only and closed at once: dbt can't write gold while another process has it open.
@@ -82,10 +84,16 @@ def main() -> None:
 
     with st.sidebar:
         st.header("Filters")
-        first, last = quakes.origin_time_utc.dt.year.agg(["min", "max"])
-        years = st.slider("Years (UTC)", int(first), int(last), (int(first), int(last)))
+        first, last = (int(y) for y in quakes.origin_time_utc.dt.year.agg(["min", "max"]))
+        if first < last:
+            years = st.slider("Years (UTC)", first, last, (first, last))
+        else:  # a slider needs two different ends
+            years = (first, last)
+            st.caption(f"Years (UTC): {first} only")
         lowest = float(quakes.magnitude.min())
-        min_mag = st.slider("Minimum magnitude", lowest, 8.0, lowest, step=0.1, format="%.1f")
+        min_mag = st.slider(
+            "Minimum magnitude", lowest, MAX_MAGNITUDE, lowest, step=0.1, format="%.1f"
+        )
         abroad = st.toggle(
             "Include earthquakes USGS places in another country",
             help="USGS names the Philippines, Timor-Leste, Papua New Guinea, ... as the nearest "
@@ -110,16 +118,16 @@ def main() -> None:
         st.info("No earthquake matches these filters.")
         return
 
-    top = shown.loc[shown.magnitude.idxmax()]
     kpi = st.columns(4)
     kpi[0].metric("Earthquakes", f"{len(shown):,}")
     kpi[1].metric("M5 and up", f"{(shown.magnitude >= 5).sum():,}")
     kpi[2].metric("M6 and up", f"{(shown.magnitude >= 6).sum():,}")
-    kpi[3].metric(
-        "Largest",
-        f"M{top.magnitude:.1f}",
-        help=f"{top.origin_time_utc:%Y-%m-%d} UTC, {top.place}",
-    )
+    if shown.magnitude.notna().any():
+        top = shown.loc[shown.magnitude.idxmax()]
+        when = f"{top.origin_time_utc:%Y-%m-%d} UTC, {top.place}"
+        kpi[3].metric("Largest", f"M{top.magnitude:.1f}", help=when)
+    else:
+        kpi[3].metric("Largest", "?", help="None of these earthquakes has a magnitude.")
 
     left, right = st.columns([3, 2])
     with left:
