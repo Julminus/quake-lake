@@ -16,12 +16,14 @@ import pydeck as pdk
 import streamlit as st
 
 # The fact and its province: every chart is computed from these rows, so one set of
-# filters drives them all (about 27,000 rows, read in 0.04 s). A left join, so an event
-# whose province dim_province lacks still counts, under its code.
+# filters drives them all (about 27,000 rows, read in 0.04 s). dbt writes the fact before
+# its tests run, so a failed build can leave rows they would refuse; such a row still
+# counts: under its province code if dim_province lacks it, as unknown if it has none.
 QUERY = """
 select
     f.event_id, f.origin_time_utc, f.latitude, f.longitude, f.depth_km, f.depth_class,
-    f.magnitude, f.place, f.in_indonesia, coalesce(d.province, f.province_code) as province
+    f.magnitude, coalesce(f.place, 'place unknown') as place, f.in_indonesia,
+    coalesce(d.province, f.province_code, 'province unknown') as province
 from fct_earthquakes as f
 left join dim_province as d using (province_code)
 order by f.magnitude nulls first  -- the largest are drawn last, on top
@@ -135,8 +137,8 @@ def main() -> None:
         # Only what the map draws: every rerun sends it to the browser, as indented JSON.
         mag = shown.magnitude.map(lambda m: "?" if pd.isna(m) else f"{m:.1f}")
         tip = "M" + mag + ", " + shown.origin_time_utc.dt.strftime("%Y-%m-%d %H:%M UTC")
-        tip += "\n" + shown.place.fillna("") + "\n"
-        tip += shown.depth_km.round(1).astype(str) + " km deep"
+        tip += "\n" + shown.place + "\n"
+        tip += (shown.depth_km.round(1) + 0.0).astype(str) + " km deep"  # + 0.0: no "-0.0"
         points = pd.DataFrame(
             {
                 "lon": shown.longitude.round(3),  # about 100 m

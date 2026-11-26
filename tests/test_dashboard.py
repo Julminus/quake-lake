@@ -21,7 +21,7 @@ COLUMNS = "event_id, origin_time_utc, latitude, longitude, depth_km, depth_class
 COLUMNS += " place, in_indonesia, province_code"
 # M5.0 and M6.0 sit on the boundaries the page counts and filters by.
 QUAKES = [
-    ("a", datetime(2018, 9, 28, 10, 2), -0.2, 119.8, 10.0, "shallow", 7.5, "Palu", True, "ID-ST"),
+    ("a", datetime(2018, 9, 28, 10, 2), -0.2, 119.8, 12.3, "shallow", 7.5, "Palu", True, "ID-ST"),
     ("b", datetime(2019, 1, 5), -3.6, 128.2, 30.0, "shallow", 4.2, "Ambon", True, "ID-MA"),
     ("c", datetime(2019, 3, 1), -3.7, 128.1, 120.0, "intermediate", 5.0, "Ambon", True, "ID-MA"),
     ("d", datetime(2020, 6, 1), 5.0, 126.5, 600.0, "deep", 6.0, "Mindanao", False, "ID-SA"),
@@ -72,10 +72,17 @@ def metrics(at: AppTest) -> dict[str, str]:
 
 
 def points(at: AppTest) -> list[dict]:
-    """The map's points, as sent to the browser."""
-    deck = at.get("deck_gl_json_chart")[0].proto.json
-    assert "NaN" not in deck  # not JSON: the browser would refuse the whole map
-    return json.loads(deck)["layers"][0]["data"]
+    """The map's points, as sent to the browser, after checking how the layer reads them."""
+    deck = at.get("deck_gl_json_chart")[0].proto
+    assert "NaN" not in deck.json  # not JSON: the browser would refuse the whole map
+    assert json.loads(deck.tooltip) == {"text": "{tip}"}
+    layer = json.loads(deck.json)["layers"][0]
+    assert (layer["getPosition"], layer["getRadius"], layer["getFillColor"]) == (
+        "@@=[lon, lat]",
+        "@@=r",
+        "@@=color",
+    )
+    return layer["data"]
 
 
 def chart(at: AppTest, i: int) -> pd.DataFrame:
@@ -99,11 +106,22 @@ def test_the_default_view_counts_indonesian_earthquakes(gold):
     assert board.earthquakes.tolist() == [2, 1, 1]
     assert board.m5_plus.tolist() == [1, 0, 1]
     assert board.largest.tolist()[0] == 5.0
+    assert at.caption[0].value.startswith("2018 to 2020, M4.2 and up. ")
     assert "Newest event in gold: 2020-07-01 00:00 UTC" in at.caption[0].value
-    tips = sorted(p["tip"] for p in points(at))
-    assert tips[0] == "M4.2, 2019-01-05 00:00 UTC\nAmbon\n30.0 km deep"
-    assert tips[-1] == "M?, 2020-07-01 00:00 UTC\nBantul\n10.0 km deep"
-    assert len(tips) == 4
+    assert at.metric[3].proto.help == "2018-09-28 UTC, Palu"
+    magnitude = at.sidebar.slider[1].proto
+    assert (magnitude.min, magnitude.max) == (4.2, 10.0)
+    # Smallest first, so the largest are drawn on top; no magnitude counts as the smallest.
+    pts = points(at)
+    assert [p["tip"].split(",")[0] for p in pts] == ["M?", "M4.2", "M5.0", "M7.5"]
+    assert pts[-1] == {
+        "lon": 119.8,
+        "lat": -0.2,
+        "r": 90510.0,  # 4 km doubled 4.5 times
+        "color": dashboard.DEPTH_RGB["shallow"],
+        "tip": "M7.5, 2018-09-28 10:02 UTC\nPalu\n12.3 km deep",
+    }
+    assert pts[0]["r"] == 4000.0  # no magnitude: drawn as an M3
     # Every month from the first to the last, quiet ones as 0; e has no magnitude to plot.
     months = chart(at, 0)
     assert (len(months), months.earthquakes.sum()) == (23, 4)
@@ -165,10 +183,23 @@ def test_a_gold_of_one_year_has_no_year_slider(gold):
 
 def test_an_event_whose_province_is_missing_still_counts(gold):
     add(gold, [("f", datetime(2021, 1, 1), -1.0, 120.0, 5.0, "shallow", 6.6, "x", True, "ID-XX")])
+    add(gold, [("g", datetime(2021, 2, 1), -1.0, 120.0, 5.0, "shallow", 4.4, "y", True, None)])
     at = app()
 
-    assert metrics(at)["Earthquakes"] == "5"
-    assert "ID-XX" in at.dataframe[0].value.province.tolist()
+    assert metrics(at)["Earthquakes"] == "6"
+    board = at.dataframe[0].value
+    assert board.earthquakes.sum() == 6
+    assert {"ID-XX", "province unknown"} <= set(board.province)
+
+
+def test_an_event_with_no_place_and_a_depth_of_minus_zero(gold):
+    add(
+        gold, [("f", datetime(2021, 1, 1), -1.0, 120.0, -0.04, "shallow", 7.9, None, True, "ID-ST")]
+    )
+    at = app()
+
+    assert at.metric[3].proto.help == "2021-01-01 UTC, place unknown"
+    assert points(at)[-1]["tip"] == "M7.9, 2021-01-01 00:00 UTC\nplace unknown\n0.0 km deep"
 
 
 def test_a_rebuilt_gold_is_read_again(gold):
