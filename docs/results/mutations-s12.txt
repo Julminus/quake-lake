@@ -1,0 +1,19 @@
+caught   the map ignores the filters
+caught   the month chart ignores the filters
+caught   the magnitude chart ignores the filters
+caught   minimum magnitude: >= becomes >
+caught   the abroad toggle is ignored
+caught   the magnitude filter drops unknowns at its lowest
+caught   M5 and up: >= becomes >
+caught   M6 and up: >= becomes >
+caught   the table's M5+: >= becomes >
+caught   the table's largest is the smallest
+caught   no depth colours (NaN in the map)
+caught   no radius without a magnitude (NaN)
+caught   the tooltip loses the place
+caught   newest event from the filtered rows
+caught   an inner join to dim_province
+caught   a year slider for a one-year gold
+caught   the largest of no magnitudes
+caught   a cache that never sees a rebuild
+18 of 18 caught
