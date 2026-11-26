@@ -124,18 +124,26 @@ def main() -> None:
     left, right = st.columns([3, 2])
     with left:
         st.subheader("Where")
-        points = shown.assign(
-            color=shown.depth_class.map(DEPTH_RGB),
-            radius=4000 * 2 ** (shown.magnitude.fillna(3) - 3),  # metres: doubles per unit
-            when=shown.origin_time_utc.dt.strftime("%Y-%m-%d %H:%M UTC"),
-            mag=shown.magnitude.map(lambda m: "?" if pd.isna(m) else f"{m:.1f}"),
-        )[["longitude", "latitude", "color", "radius", "when", "mag", "place", "depth_km"]]
+        # Only what the map draws: every rerun sends it to the browser, as indented JSON.
+        mag = shown.magnitude.map(lambda m: "?" if pd.isna(m) else f"{m:.1f}")
+        tip = "M" + mag + ", " + shown.origin_time_utc.dt.strftime("%Y-%m-%d %H:%M UTC")
+        tip += "\n" + shown.place.fillna("") + "\n"
+        tip += shown.depth_km.round(1).astype(str) + " km deep"
+        points = pd.DataFrame(
+            {
+                "lon": shown.longitude.round(3),  # about 100 m
+                "lat": shown.latitude.round(3),
+                "r": (4000 * 2 ** (shown.magnitude.fillna(3) - 3)).round(),  # m, x2 per unit
+                "color": shown.depth_class.map(DEPTH_RGB),
+                "tip": tip,
+            }
+        )
         layer = pdk.Layer(
             "ScatterplotLayer",
             points,
-            get_position=["longitude", "latitude"],
+            get_position=["lon", "lat"],
             get_fill_color="color",
-            get_radius="radius",
+            get_radius="r",
             radius_min_pixels=1,
             opacity=0.5,
             pickable=True,
@@ -144,7 +152,7 @@ def main() -> None:
             pdk.Deck(
                 layers=[layer],
                 initial_view_state=pdk.ViewState(latitude=-2.5, longitude=118, zoom=2.9),
-                tooltip={"text": "M{mag}, {when}\n{place}\n{depth_km} km deep"},
+                tooltip={"text": "{tip}"},
                 map_style=None,
             ),
             height=460,
