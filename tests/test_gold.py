@@ -12,6 +12,7 @@ import pytest
 from dbt.cli.main import dbtRunner
 
 from conftest import fixture
+from quake_lake import dashboard
 from quake_lake.silver import build_silver
 from quake_lake.storage import LocalStorage
 from test_silver import T0, bmkg, feature, gempa, usgs
@@ -123,6 +124,29 @@ def test_gold_builds_from_the_recorded_feeds(lake):
     days = (datetime(2026, 11, 20) - datetime(2018, 9, 28)).days + 1
     assert query(lake, "select count(*), sum(earthquakes) from agg_daily_activity") == [(days, 95)]
     assert query(lake, "select count(*), count_if(region is null) from dim_province") == [(38, 0)]
+    # The dashboard computes from the fact; its province and month counts match the marts.
+    with duckdb.connect(str(lake / "gold.duckdb")) as c:
+        quakes = c.sql(dashboard.QUERY).df()
+    assert len(quakes) == 81 + 15
+    ours = quakes[quakes.in_indonesia]
+    board = dashboard.leaderboard(ours)[["province", "earthquakes", "m5_plus", "largest"]]
+    assert set(board.itertuples(index=False)) == set(
+        query(
+            lake,
+            "select province, sum(earthquakes), coalesce(sum(earthquakes) filter (where"
+            " magnitude_class in ('moderate', 'strong', 'major', 'great')), 0),"
+            " max(max_magnitude) from agg_province_magnitude join dim_province"
+            " using (province_code) group by province",
+        )
+    )
+    months = dashboard.monthly(ours)
+    assert {(m.date(), n) for m, n in months.itertuples(index=False)} == set(
+        query(
+            lake,
+            "select date_trunc('month', activity_date)::date, sum(earthquakes)"
+            " from agg_daily_activity group by 1",
+        )
+    )
 
 
 def test_a_usgs_region_missing_from_the_seed_warns(lake):

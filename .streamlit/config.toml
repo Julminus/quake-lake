@@ -1,0 +1,13 @@
+# Read by `streamlit run` from the repository root (make dashboard).
+[server]
+headless = true          # no first-run e-mail prompt, no browser opened
+address = "127.0.0.1"    # local only, like the compose stack
+
+[browser]
+gatherUsageStats = false  # no telemetry (dbt's is off too)
+
+[client]
+toolbarMode = "viewer"     # no "Deploy" button
+
+[theme]
+primaryColor = "#2a78d6"  # the charts' blue for the widgets too

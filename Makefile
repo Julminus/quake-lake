@@ -9,7 +9,7 @@ SINCE ?= 2015-01-01
 export DBT_PROJECT_DIR := transform
 export DBT_PROFILES_DIR := transform
 
-.PHONY: help setup lint format typecheck test run backfill silver gold freshness docs minio minio-run airflow docker infra-check plan clean
+.PHONY: help setup lint format typecheck test run backfill silver gold freshness docs dashboard minio minio-run airflow docker infra-check plan clean
 
 help:
 	@echo "setup      install deps (+ pre-commit hooks once .pre-commit-config.yaml exists)"
@@ -23,6 +23,7 @@ help:
 	@echo "gold       dbt build: seeds, models and tests into GOLD_DB (default lake/gold.duckdb)"
 	@echo "freshness  dbt source freshness: is the newest event in silver recent?"
 	@echo "docs       dbt docs generate, then open transform/target/static_index.html"
+	@echo "dashboard  Streamlit on gold (GOLD_DB) at http://127.0.0.1:8501"
 	@echo "minio      start MinIO (127.0.0.1:9000) and create the 'lake' bucket"
 	@echo "minio-run  bronze and silver as in run, inside a container, into s3://lake/ on MinIO"
 	@echo "airflow    MinIO + Airflow (http://127.0.0.1:8080); the daily DAG runs the whole pipeline"
@@ -68,6 +69,9 @@ freshness:
 
 docs:
 	uv run dbt docs generate --static
+
+dashboard:
+	uv run streamlit run src/quake_lake/dashboard.py
 
 minio:
 	docker compose up -d --wait minio

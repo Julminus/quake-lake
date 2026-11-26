@@ -31,6 +31,10 @@ dependencies = [
     "pyarrow>=26",
 ]
 
+# The dashboard is an extra, so the CLI and Airflow images (built --no-dev) don't carry it.
+[project.optional-dependencies]
+dashboard = ["pydeck>=0.9", "streamlit>=1.67"]
+
 [project.scripts]
 quake-lake = "quake_lake.cli:main"
 
@@ -39,6 +43,7 @@ Repository = "https://github.com/Julminus/quake-lake"
 
 [dependency-groups]
 dev = [
+    "quake-lake[dashboard]",  # the tests run the dashboard
     "moto[s3]>=5.0",
     "mypy>=1.13",
     "pre-commit>=4.0",
@@ -85,8 +90,8 @@ warn_unreachable = true
 
 [[tool.mypy.overrides]]
 # boto3/botocore ship no type information; the S3 client is used through five calls.
-# pandas and pyarrow don't either (pandas-stubs exists, but silver.py is the only user).
-module = ["boto3.*", "botocore.*", "pandas.*", "pyarrow.*"]
+# pandas, pyarrow and pydeck don't either (pandas-stubs exists, but few modules use pandas).
+module = ["boto3.*", "botocore.*", "pandas.*", "pyarrow.*", "pydeck.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest
