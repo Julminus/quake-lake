@@ -2,73 +2,174 @@
 
 A medallion-architecture data pipeline for Indonesian earthquake data: USGS and BMKG feeds land
 raw in a bronze layer on S3 (or MinIO, or a local folder), become one typed, deduplicated
-Parquet table in silver, and are modelled with dbt and DuckDB into gold marts, once a day, by
-an Airflow DAG. Terraform describes the AWS deployment (S3, a scheduled Lambda, Glue and
-Athena), planned and tested but never applied. Everything runs on a laptop: `docker
-compose up` starts MinIO and Airflow and runs the pipeline; without Docker, bronze and silver
-go to a folder and gold to a DuckDB file.
+Parquet table in silver, and are modelled with dbt and DuckDB into gold marts that a
+Streamlit dashboard reads; an Airflow DAG runs it once a day. Terraform describes the AWS
+deployment (S3, a scheduled Lambda, Glue and Athena), planned and tested but never applied.
+Everything runs on a laptop: `docker compose up` starts MinIO and Airflow and runs the
+pipeline; without Docker, bronze and silver go to a folder and gold to a DuckDB file.
 
 [![CI](https://github.com/Julminus/quake-lake/actions/workflows/ci.yml/badge.svg)](https://github.com/Julminus/quake-lake/actions/workflows/ci.yml)
 ![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **Status:** bronze (ingestion), silver (typed Parquet, validation, deduplication across
-sources, provinces), gold (dbt models, tests and an incremental fact table) and the Airflow
-DAG that runs them daily are built and measured. The AWS deployment in [`infra/`](infra/) is
-Terraform that plans and passes its offline tests; it has not been applied to an AWS
-account. A dashboard comes next; see [What's next](#whats-next).
+sources, provinces), gold (dbt models, tests and an incremental fact table), the dashboard
+and the Airflow DAG that runs the pipeline daily are built and measured. The AWS deployment
+in [`infra/`](infra/) is Terraform that plans and passes its offline tests; it has not been
+applied to an AWS account. See [What's next](#whats-next).
 
-![quake-lake usgs and quake-lake bmkg writing into s3://lake/bronze on a local MinIO, then quake-lake silver rebuilding s3://lake/silver](docs/img/ingest.svg)
+![The quake-lake dashboard: 20,654 Indonesian earthquakes since 2015, 2,173 of M5 and up, 150 of M6 and up, the largest M7.8; a map of every earthquake, a province leaderboard led by Maluku, earthquakes per month and a magnitude histogram](docs/img/dashboard.png)
 
-<sub>Real output, recorded by `scripts/render_screenshot.py` against the MinIO from `compose.yaml`.</sub>
+<sub>The dashboard (`make dashboard`) on the gold of the end-to-end run below, captured with
+headless Chrome by `scripts/screenshot_dashboard.py`.</sub>
 
 ## Results
 
-Measured on 2026-11-20 (bronze), 2026-11-21 (silver), 2026-11-22 (gold), 2026-11-24
-(Airflow) and 2026-11-25 (Terraform, UTC) on this PC (Windows 11, Docker Desktop, a home
-connection in Indonesia). Where each number comes from, and how to re-run it, is in
+Measured on this PC (Windows 11, Docker Desktop, a home connection in Indonesia): the whole
+pipeline end to end on 2026-11-26, and each layer on the day it was built, 2026-11-20
+(bronze), 2026-11-21 (silver), 2026-11-22 (gold), 2026-11-24 (Airflow) and 2026-11-25
+(Terraform), all UTC. So the layers' counts are a few days older than the end-to-end run's.
+Where each number comes from, and how to re-run it, is in
 [`docs/results/`](docs/results/README.md).
 
-### Terraform (planned, not applied)
+### End to end, from an empty folder
 
-- **`make plan` plans 33 resources with no AWS account** (2 to 3 s once initialised): four
-  buckets with their access blocks, TLS-only policies and lifecycle rules, the ingest
-  Lambda with its role, log group, retry setting and two EventBridge schedules, a Glue
-  database and table, an Athena workgroup and two IAM policies
-  ([the plan](docs/results/plan-s11.txt)). The plan is byte-identical from Windows and from
-  Linux, down to the hash of the Lambda's 24,956-byte zip.
-- **About 3 cents a month as deployed** ($0.026 in the first month, $0.028 in the twelfth),
-  from AWS's own price list for Singapore with no free tier applied. A daily silver rebuild
-  from a PC and 300 Athena queries a month bring it to $0.59 and $1.16 ($0.51 and $0.80
-  inside the free 100 GB of transfer); the biggest line is Athena considering partitions
-  that don't exist yet (an assumed S3 LIST each). Details and assumptions:
-  [`docs/aws-cost-estimate.md`](docs/aws-cost-estimate.md).
-- **256 MB for the Lambda: half the init time of 128 MB, for a fraction of a cent.** The
-  handler's process peaks at 51.3 MiB, but Lambda's CPU grows with memory. Emulating 256 MB's
-  share of a CPU (`docker --cpus 0.1447` on AWS's Lambda image, on this PC's CPU, not AWS's),
-  a cold start was 0.81 to 0.91 s of init and a 2.4 to 3.5 s first invocation (three BMKG
-  feeds and 7 days of USGS into MinIO), 3.3 to 4.4 s in all; at 128 MB, 1.75 to 1.86 s and
-  4.0 to 4.2 s, 5.8 to 6.0 s in all ([`lambda-s11.log`](docs/results/lambda-s11.log)).
-  128 MB would bill fewer GB-seconds
-  (0.76 against 1.09 for the slowest cold start, about $0.004 a month less); for an hourly
-  poll either is fine, and I took the faster one.
-- **Checks:** `terraform fmt`, `terraform validate`, `tflint` with the AWS ruleset on the
-  root and every module (no findings), and 5 `terraform test` runs against a mocked AWS
-  provider, which check what the modules build: public access blocked and plain HTTP denied
-  on every bucket, the lifecycle rules and which buckets keep old versions, every IAM policy
-  compared whole (an ingest role that can only put objects into bronze and write its own
-  logs, a pipeline policy that reads bronze and rewrites silver, a query policy limited to
-  silver's events and the results bucket), each schedule's rule, event and permission, the
-  memory, timeout and retries, the Glue table's location, format, partition types and
-  projection, and the wiring between modules (the Lambda writes bronze, Athena reads silver
-  and writes results). To see that the checks have teeth, `scripts/mutate_infra.py` plants
-  48 bugs one at a time (wider permissions, a module given the wrong bucket, a lost
-  condition, an hourly schedule made daily, ...): 47 fail a test; the one left is the
-  projection's year range, a setting
-  ([`mutations-s11.txt`](docs/results/mutations-s11.txt)). Two reviews got there: the first
-  version of the tests let 13 of 14 of a reviewer's mutations through, the second missed the
-  root's wiring. CI runs all of it, plus the plan, on every push to `main` and every pull
-  request; `make infra-check` locally (7 to 8.5 s).
+The quickstart's commands with the whole history (`--since 2015-01-01`), each timed as a
+separate process, then the dashboard on the gold they built (`scripts/measure_pipeline.py`,
+starting 18:14 UTC on 2026-11-26):
+
+| Step | Command | Time | In → out |
+|---|---|---|---|
+| Bronze | `quake-lake bmkg` | 0.4 s | 3 BMKG feeds → 3 objects, 31 records |
+| Bronze | `quake-lake usgs --since 2015-01-01` | 142.3 s | 143 monthly requests → 143 objects, 26,806 events, 19.0 MB |
+| Silver | `quake-lake silver` | 1.0 s | 146 objects, 26,837 records → 26,816 events in 143 Parquet files, 3.1 MB |
+| Gold | `dbt build` | 3.4 s | 26,815 earthquakes (20,654 Indonesian), 38 provinces, 4,348 days, 122 province and magnitude rows |
+| Freshness | `dbt source freshness` | 1.7 s | the newest event is recent: pass |
+| **All** | | **148.9 s** | |
+
+Each time includes the command's start-up and, for dbt, a first parse of the project.
+
+- **21 of the 26,837 records (0.08%) are not events of their own.** 4 are repeats (BMKG's
+  three feeds share events) and 17 are BMKG events folded into the USGS event they match. A
+  fresh backfill has few repeats; a bronze that has been running for a while has more:
+  silver's own measurement below, with a 30-day USGS look-back on top of the backfill,
+  dropped 116 repeats and merged 15 of 26,913 records. Gold then drops the one volcanic
+  eruption (26,816 events, 26,815 earthquakes).
+- **The data-quality checks, all passed.** Each of the 146 bronze objects had the shape of
+  its feed before it was written. pandera typed 13 fields of each of the 26,837 records and
+  applied 8 value checks (a non-empty id, a known source, a time after 1900 and not after
+  the fetch, coordinates inside the box, a depth from -10 to 800 km, a magnitude from -2 to
+  10) before deduplication: 0 quarantined. `dbt build` ran 41 data tests and 2 unit tests
+  between its 7 models and 2 seeds: 43 passed. `dbt source freshness` passed.
+- **The dashboard:** its query returns all 26,815 earthquakes in 0.04 s, and the page,
+  rendered headless with Streamlit's `AppTest`, takes 0.56 s the first time (reading gold)
+  and 0.28 s from Streamlit's cache. With the default filters it shows 20,654 Indonesian
+  earthquakes since 2015, 2,173 of M5 and up, 150 of M6 and up, the largest M7.8, and
+  Maluku (3,945), Maluku Utara (3,618) and Sulawesi Utara (2,061) at the top of the
+  provinces (the screenshot above).
+
+### Bronze
+
+- **Backfill, 2015-01-01 to 2026-11-20:** 143 requests (one per calendar month), **26,763
+  events, 19.0 MB of raw GeoJSON, 139.2 s** to a local folder. One request takes 0.95 s at the
+  median and 1.19 s at p95. Writing all 143 objects takes 0.09 s of that, so the time is the
+  USGS requests. The same backfill into MinIO took 141.6 s, 1.2 s of it writing, and stored
+  the same 18,990,379 bytes.
+- **Asking for gzip cut the backfill from 182.8 s to 139.2 s.** USGS sends a month about 7
+  times smaller. Fetching 12 months 3 times each way, interleaved so a slow spell on the
+  network hits both: median request 1.03 s to 0.60 s, 4.7 MB to 0.7 MB on the wire.
+- **One query per month is far from USGS's 20,000-event limit.** The busiest month since 2015 was
+  August 2026, with 606 events. A single query for the whole range is refused with HTTP 400
+  ("… matching events exceeds search limit of 20000"), and the CLI prints that reason.
+- **No event appears in two windows.** USGS treats both ends of a time range as inclusive, so an
+  event exactly on a month boundary could be fetched twice. 26,763 events, 26,763 unique ids. The
+  silver layer deduplicates on id anyway.
+- **What USGS has for this box:** M3.0 to M7.8 (median M4.4), and 99.7% of the events with a
+  magnitude are M4.0+ (one has none), so this is the global catalogue's view, not a local
+  network's. 2,725 events of M5.0+, 204 of M6.0+, 24 of M7.0+. All are `reviewed`; 26,762 are
+  earthquakes and 1 is a volcanic eruption. Bronze and silver keep the eruption; filtering is
+  gold's call.
+- **BMKG:** each snapshot of the three public feeds holds 31 events (the latest one, the latest
+  15 of M5.0+, the latest 15 felt), about 9.3 KB.
+- **The Lambda handler runs in AWS's Lambda runtime image.** In `public.ecr.aws/lambda/python:3.12`
+  under its local emulator, with only `src/` mounted (what a zip deployment ships; boto3
+  1.43.127 comes from the image), three cold starts: init 186 to 386 ms, and one live
+  invocation each (all three BMKG feeds plus two days of USGS) 1.10 to 1.53 s. CI starts the
+  same image on every push to `main` and every pull request, and invokes the handler with an
+  event it must refuse, which needs no network.
+- **MinIO:** with the image pulled, `docker compose up -d --wait minio` is healthy in 2.3 to
+  2.4 s. The CLI's image is 1,183 MB since gold (233 MB with bronze only, 688 MB with
+  silver): pyarrow alone is 170 MB, and dbt brings DuckDB (66 MB), Babel (33 MB) and more.
+
+### Silver
+
+Built from the local bronze: the full USGS backfill (143 objects), a 30-day USGS look-back
+fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
+
+- **26,782 events in 143 monthly Parquet files, 3.1 MB** (the 147 JSON objects are 19.1 MB),
+  rebuilt in 0.5 to 0.7 s (three runs; 1.0 to 1.2 s from the CLI, with imports). Rebuilding over the previous output gives **byte-identical files** (with
+  the same library versions: the Parquet files record pandas' and pyarrow's).
+- **116 repeats of an event dropped.** 113 USGS ids were in both the backfill and the
+  look-back, and USGS had revised 5 of them in between (the newer version is kept); none had
+  been renamed. BMKG's 31 records hold 28 events: the latest was in all three feeds, another
+  in two.
+- **15 BMKG events folded into the USGS event they match.** BMKG's 28 events split cleanly:
+  the 15 matched (BMKG M5.1 to 7.2) were 0 to 5.0 s and 8 to 36 km from their USGS match
+  (median 17 km), and each had only one USGS event within 300 s at any distance. The 13
+  unmatched (BMKG M2.0 to M4.6) have no USGS event within 413 s; they're below the size USGS
+  lists consistently here. **BMKG's magnitude was the same or higher for all 15**, by up to
+  0.5 (median +0.3), so silver keeps USGS's values and links BMKG's id rather than mixing
+  the two.
+- **The merge tolerance, 10 s and 100 km, rarely fits two distinct events:** in 12 years of
+  USGS data, 6 pairs of different events were that close.
+- **0 of 26,913 real records failed validation.** The tests cover 29 kinds of bad record and
+  8 kinds of unreadable object; each lands in `quarantine/events.jsonl` with its raw record.
+- **Provinces: the nearest-reference-point rule agrees with province polygons for 93.5% of
+  events** (OCHA's 34-province boundaries, compared at that level): 98.1% of the 4,117 on
+  land and 92.7% of the 22,665 at sea. It does worst at sea 100 to 200 km from the nearest
+  reference point (87.5%); beyond 200 km it agrees 96.6%.
+- **The USGS box is not Indonesia.** For 22.9% of the USGS events, USGS's nearest town is in
+  another country (3,712 in the Philippines, 2,160 in Timor-Leste, 180 in Papua New Guinea,
+  43 in Palau). Silver still gives each its nearest Indonesian province, with `province_km`,
+  so gold can decide what counts: 3,666 of Sulawesi Utara's 5,734 events have a USGS place
+  in the Philippines.
+
+### Gold
+
+Built with dbt from the silver above (26,782 events).
+
+- **A full `dbt build` runs 7 models, 2 seeds, 41 data tests and 2 unit tests in about
+  1 s** (0.92 to 0.98 s; 2.6 s when dbt has to parse the project from scratch; `make gold`,
+  with dbt's start-up, 2.7 s on a repeat run and about 5 s on the first). All 52 pass.
+- **20,638 of the 26,781 earthquakes count as Indonesian (77%).** USGS places the other
+  6,143 in another country: 3,722 in the Philippines, 2,167 in Timor-Leste, 180 in Papua New
+  Guinea, 48 in Palau, 23 in Malaysia, 2 near India's Nicobar Islands and 1 in Australia. The
+  1,193 that USGS names only by a sea or region (1,017 "Banda Sea", 114 "Molucca Sea") and
+  the 13 that only BMKG lists count as Indonesian. Sulawesi Utara keeps 2,056 of the 5,734
+  events silver gave it.
+- **The rule's limit, measured:** USGS names the nearest town on its own list, which can be
+  far away. 287 events it places in the Philippines, 134 in Timor-Leste and 28 in Papua New
+  Guinea are within 50 km of an Indonesian regency reference point, such as one "214 km S of
+  Sarangani, Philippines" that is 10 km from a Sulawesi Utara point. Some of those are
+  Indonesian; the ones near the Timor-Leste border may not be. Polygons of territory would
+  settle it (see the design decisions).
+- **Where they are:** Maluku 3,943, Maluku Utara 3,616, Sulawesi Utara 2,056, Nusa Tenggara
+  Timur 1,596 and Papua 1,100 lead the 36 provinces with any; by region, Maluku has 7,559 and
+  Kalimantan 42. 68% are shallow (under 70 km) and 708 are deep (300 km or more).
+- **A median of 4 Indonesian earthquakes a day** (UTC) over the 4,343 days since 2015, and 87
+  days with none. The busiest, 2 April 2026 (UTC), had 135: 132 of them in the northern
+  Molucca Sea, which USGS places near Bitung or Ternate, in the hours after an M7.4 there
+  at 22:48 UTC on 1 April (07:48 on the 2nd in Maluku Utara's time, WIT). UTC days put the
+  M7.4 on the day before, and the nearest-province rule splits the 132 between Sulawesi
+  Utara (69) and Maluku Utara (63).
+- **The incremental fact table, on a real next fetch.** After a BMKG snapshot and a 7-day
+  USGS look-back on 2026-11-22, `fct_earthquakes` rewrote **6 of its 26,786 rows** (5 new
+  events, 1 that USGS had revised) and the result was **identical to a full refresh** (no
+  event left silver in that fetch; the tests cover that case). At this size it saves
+  nothing: both take about 0.1 s, because both read and hash all of silver.
+- **Source freshness:** silver's newest event was 33.3 hours old (pass). dbt warns after 4
+  days and errors after 7: the longest gap between two events since 2015 was 49.7 hours,
+  and a daily fetch can add a day to that.
 
 ### Airflow
 
@@ -111,116 +212,60 @@ From empty volumes, with the images built (`scripts/measure_airflow.py`):
 
 <sub>The Airflow UI after the measurement, captured with headless Chrome; times are WIB (UTC+7).</sub>
 
-### Gold
+### Terraform (planned, not applied)
 
-Built with dbt from the silver below (26,782 events).
+- **`make plan` plans 33 resources with no AWS account** (2 to 3 s once initialised): four
+  buckets with their access blocks, TLS-only policies and lifecycle rules, the ingest
+  Lambda with its role, log group, retry setting and two EventBridge schedules, a Glue
+  database and table, an Athena workgroup and two IAM policies
+  ([the plan](docs/results/plan-s11.txt)). The plan is byte-identical from Windows and from
+  Linux, down to the hash of the Lambda's 24,956-byte zip.
+- **About 3 cents a month as deployed** ($0.026 in the first month, $0.028 in the twelfth),
+  from AWS's own price list for Singapore with no free tier applied. A daily silver rebuild
+  from a PC and 300 Athena queries a month bring it to $0.59 and $1.16 ($0.51 and $0.80
+  inside the free 100 GB of transfer); the biggest line is Athena considering partitions
+  that don't exist yet (an assumed S3 LIST each). Details and assumptions:
+  [`docs/aws-cost-estimate.md`](docs/aws-cost-estimate.md).
+- **256 MB for the Lambda: half the init time of 128 MB, for a fraction of a cent.** The
+  handler's process peaks at 51.3 MiB, but Lambda's CPU grows with memory. Emulating 256 MB's
+  share of a CPU (`docker --cpus 0.1447` on AWS's Lambda image, on this PC's CPU, not AWS's),
+  a cold start was 0.81 to 0.91 s of init and a 2.4 to 3.5 s first invocation (three BMKG
+  feeds and 7 days of USGS into MinIO), 3.3 to 4.4 s in all; at 128 MB, 1.75 to 1.86 s and
+  4.0 to 4.2 s, 5.8 to 6.0 s in all ([`lambda-s11.log`](docs/results/lambda-s11.log)).
+  128 MB would bill fewer GB-seconds
+  (0.76 against 1.09 for the slowest cold start, about $0.004 a month less); for an hourly
+  poll either is fine, and I took the faster one.
+- **Checks:** `terraform fmt`, `terraform validate`, `tflint` with the AWS ruleset on the
+  root and every module (no findings), and 5 `terraform test` runs against a mocked AWS
+  provider, which check what the modules build: public access blocked and plain HTTP denied
+  on every bucket, the lifecycle rules and which buckets keep old versions, every IAM policy
+  compared whole (an ingest role that can only put objects into bronze and write its own
+  logs, a pipeline policy that reads bronze and rewrites silver, a query policy limited to
+  silver's events and the results bucket), each schedule's rule, event and permission, the
+  memory, timeout and retries, the Glue table's location, format, partition types and
+  projection, and the wiring between modules (the Lambda writes bronze, Athena reads silver
+  and writes results). To see that the checks have teeth, `scripts/mutate_infra.py` plants
+  48 bugs one at a time (wider permissions, a module given the wrong bucket, a lost
+  condition, an hourly schedule made daily, ...): 47 fail a test; the one left is the
+  projection's year range, a setting
+  ([`mutations-s11.txt`](docs/results/mutations-s11.txt)). Two reviews got there: the first
+  version of the tests let 13 of 14 of a reviewer's mutations through, the second missed the
+  root's wiring. CI runs all of it, plus the plan, on every push to `main` and every pull
+  request; `make infra-check` locally (7 to 8.5 s).
 
-- **A full `dbt build` runs 7 models, 2 seeds, 41 data tests and 2 unit tests in about
-  1 s** (0.92 to 0.98 s; 2.6 s when dbt has to parse the project from scratch; `make gold`,
-  with dbt's start-up, 2.7 s on a repeat run and about 5 s on the first). All 52 pass.
-- **20,638 of the 26,781 earthquakes count as Indonesian (77%).** USGS places the other
-  6,143 in another country: 3,722 in the Philippines, 2,167 in Timor-Leste, 180 in Papua New
-  Guinea, 48 in Palau, 23 in Malaysia, 2 near India's Nicobar Islands and 1 in Australia. The
-  1,193 that USGS names only by a sea or region (1,017 "Banda Sea", 114 "Molucca Sea") and
-  the 13 that only BMKG lists count as Indonesian. Sulawesi Utara keeps 2,056 of the 5,734
-  events silver gave it.
-- **The rule's limit, measured:** USGS names the nearest town on its own list, which can be
-  far away. 287 events it places in the Philippines, 134 in Timor-Leste and 28 in Papua New
-  Guinea are within 50 km of an Indonesian regency reference point, such as one "214 km S of
-  Sarangani, Philippines" that is 10 km from a Sulawesi Utara point. Some of those are
-  Indonesian; the ones near the Timor-Leste border may not be. Polygons of territory would
-  settle it (see the design decisions).
-- **Where they are:** Maluku 3,943, Maluku Utara 3,616, Sulawesi Utara 2,056, Nusa Tenggara
-  Timur 1,596 and Papua 1,100 lead the 36 provinces with any; by region, Maluku has 7,559 and
-  Kalimantan 42. 68% are shallow (under 70 km) and 708 are deep (300 km or more).
-- **A median of 4 Indonesian earthquakes a day** (UTC) over the 4,343 days since 2015, and 87
-  days with none. The busiest, 2 April 2026 (UTC), had 135: 132 of them in the northern
-  Molucca Sea, which USGS places near Bitung or Ternate, in the hours after an M7.4 there
-  at 22:48 UTC on 1 April (07:48 on the 2nd in Maluku Utara's time, WIT). UTC days put the
-  M7.4 on the day before, and the nearest-province rule splits the 132 between Sulawesi
-  Utara (69) and Maluku Utara (63).
-- **The incremental fact table, on a real next fetch.** After a BMKG snapshot and a 7-day
-  USGS look-back on 2026-11-22, `fct_earthquakes` rewrote **6 of its 26,786 rows** (5 new
-  events, 1 that USGS had revised) and the result was **identical to a full refresh** (no
-  event left silver in that fetch; the tests cover that case). At this size it saves
-  nothing: both take about 0.1 s, because both read and hash all of silver.
-- **Source freshness:** silver's newest event was 33.3 hours old (pass). dbt warns after 4
-  days and errors after 7: the longest gap between two events since 2015 was 49.7 hours,
-  and a daily fetch can add a day to that.
+### Tests
 
-### Silver
-
-Built from the local bronze: the full USGS backfill (143 objects), a 30-day USGS look-back
-fetched a day later, and one BMKG snapshot. 147 objects, 26,913 records.
-
-- **26,782 events in 143 monthly Parquet files, 3.1 MB** (the 147 JSON objects are 19.1 MB),
-  rebuilt in 0.5 to 0.7 s (three runs; 1.0 to 1.2 s from the CLI, with imports). Rebuilding over the previous output gives **byte-identical files** (with
-  the same library versions: the Parquet files record pandas' and pyarrow's).
-- **116 repeats of an event dropped.** 113 USGS ids were in both the backfill and the
-  look-back, and USGS had revised 5 of them in between (the newer version is kept); none had
-  been renamed. BMKG's 31 records hold 28 events: the latest was in all three feeds, another
-  in two.
-- **15 BMKG events folded into the USGS event they match.** BMKG's 28 events split cleanly:
-  the 15 matched (BMKG M5.1 to 7.2) were 0 to 5.0 s and 8 to 36 km from their USGS match
-  (median 17 km), and each had only one USGS event within 300 s at any distance. The 13
-  unmatched (BMKG M2.0 to M4.6) have no USGS event within 413 s; they're below the size USGS
-  lists consistently here. **BMKG's magnitude was the same or higher for all 15**, by up to
-  0.5 (median +0.3), so silver keeps USGS's values and links BMKG's id rather than mixing
-  the two.
-- **The merge tolerance, 10 s and 100 km, rarely fits two distinct events:** in 12 years of
-  USGS data, 6 pairs of different events were that close.
-- **0 of 26,913 real records failed validation.** The tests cover 29 kinds of bad record and
-  8 kinds of unreadable object; each lands in `quarantine/events.jsonl` with its raw record.
-- **Provinces: the nearest-reference-point rule agrees with province polygons for 93.5% of
-  events** (OCHA's 34-province boundaries, compared at that level): 98.1% of the 4,117 on
-  land and 92.7% of the 22,665 at sea. It does worst at sea 100 to 200 km from the nearest
-  reference point (87.5%); beyond 200 km it agrees 96.6%.
-- **The USGS box is not Indonesia.** For 22.9% of the USGS events, USGS's nearest town is in
-  another country (3,712 in the Philippines, 2,160 in Timor-Leste, 180 in Papua New Guinea,
-  43 in Palau). Silver still gives each its nearest Indonesian province, with `province_km`,
-  so gold can decide what counts: 3,666 of Sulawesi Utara's 5,734 events have a USGS place
-  in the Philippines.
-
-### Bronze
-
-- **Backfill, 2015-01-01 to 2026-11-20:** 143 requests (one per calendar month), **26,763
-  events, 19.0 MB of raw GeoJSON, 139.2 s** to a local folder. One request takes 0.95 s at the
-  median and 1.19 s at p95. Writing all 143 objects takes 0.09 s of that, so the time is the
-  USGS requests. The same backfill into MinIO took 141.6 s, 1.2 s of it writing, and stored
-  the same 18,990,379 bytes.
-- **Asking for gzip cut the backfill from 182.8 s to 139.2 s.** USGS sends a month about 7
-  times smaller. Fetching 12 months 3 times each way, interleaved so a slow spell on the
-  network hits both: median request 1.03 s to 0.60 s, 4.7 MB to 0.7 MB on the wire.
-- **One query per month is far from USGS's 20,000-event limit.** The busiest month since 2015 was
-  August 2026, with 606 events. A single query for the whole range is refused with HTTP 400
-  ("… matching events exceeds search limit of 20000"), and the CLI prints that reason.
-- **No event appears in two windows.** USGS treats both ends of a time range as inclusive, so an
-  event exactly on a month boundary could be fetched twice. 26,763 events, 26,763 unique ids. The
-  silver layer deduplicates on id anyway.
-- **What USGS has for this box:** M3.0 to M7.8 (median M4.4), and 99.7% of the events with a
-  magnitude are M4.0+ (one has none), so this is the global catalogue's view, not a local
-  network's. 2,725 events of M5.0+, 204 of M6.0+, 24 of M7.0+. All are `reviewed`; 26,762 are
-  earthquakes and 1 is a volcanic eruption. Bronze and silver keep the eruption; filtering is
-  gold's call.
-- **BMKG:** each snapshot of the three public feeds holds 31 events (the latest one, the latest
-  15 of M5.0+, the latest 15 felt), about 9.3 KB.
-- **The Lambda handler runs in AWS's Lambda runtime image.** In `public.ecr.aws/lambda/python:3.12`
-  under its local emulator, with only `src/` mounted (what a zip deployment ships; boto3
-  1.43.127 comes from the image), three cold starts: init 186 to 386 ms, and one live
-  invocation each (all three BMKG feeds plus two days of USGS) 1.10 to 1.53 s. CI starts the
-  same image on every push to `main` and every pull request, and invokes the handler with an
-  event it must refuse, which needs no network.
-- **MinIO:** with the image pulled, `docker compose up -d --wait minio` is healthy in 2.3 to
-  2.4 s. The CLI's image is 1,183 MB since gold (233 MB with bronze only, 688 MB with
-  silver): pyarrow alone is 170 MB, and dbt brings DuckDB (66 MB), Babel (33 MB) and more.
-- **Tests:** 208 offline tests (recorded responses and small built records; one concurrency
-  test runs on Linux only) at 100% branch coverage of the Python package (CI fails below
-  90%), in 13.8 to 15.6 s (three runs); 5 of them run dbt (about 10 s of that), and 8 check
-  `infra/` from Python (the Glue table matches silver's schema; the cost estimate reads the
-  right numbers from the Terraform). 12 test the
-  Airflow DAG and need Airflow, so they skip outside its image and CI runs them inside it.
-  Two more run against a real MinIO (a storage round trip and a silver rebuild); CI runs
-  them too. The Terraform has 5 tests of its own (above).
+- **216 offline tests** (recorded responses and small built records; one concurrency test
+  runs on Linux only) at 100% branch coverage of the Python package (CI fails below 90%),
+  in 15.0 to 15.3 s (three runs). 5 of them run dbt (about 8 s of that), and one of those
+  also checks the dashboard's province and month counts against the aggregate marts. 8
+  check `infra/` from Python (the Glue table matches silver's schema; the cost estimate
+  reads the right numbers from the Terraform). 8 test the dashboard, 6 of them by running
+  it headless with Streamlit's `AppTest` on a small gold (the default view, the filters, a
+  rebuilt gold, and a gold that is missing, empty or without the marts; 2 s in all). 12
+  test the Airflow DAG and need Airflow, so they skip outside its image and CI runs them
+  inside it. Two more run against a real MinIO (a storage round trip and a silver
+  rebuild); CI runs them too. The Terraform has 5 tests of its own (above).
 
 ## How it works
 
@@ -253,6 +298,7 @@ flowchart LR
     FCT --> GD[("gold.duckdb")]
     AGG --> GD
     DIM --> GD
+    GD -->|"read-only, closed at once"| DASH["Streamlit dashboard<br/>map, provinces, months, magnitudes"]
 ```
 
 Bronze layout, one `ingest_date` (UTC) per run:
@@ -270,6 +316,11 @@ bronze/
   `{"sources": ["usgs", "bmkg"], "days": 7}`. It polls BMKG's three feeds first, one at a time,
   then USGS. If one feed or source fails, the rest still write their snapshots, and then the
   invocation fails, so Lambda's retries and alarms see it.
+
+![quake-lake usgs and quake-lake bmkg writing into s3://lake/bronze on a local MinIO, then quake-lake silver rebuilding s3://lake/silver](docs/img/ingest.svg)
+
+<sub>Real output, recorded by `scripts/render_screenshot.py` against the MinIO from `compose.yaml`.</sub>
+
 - **Storage** is one URI: a folder, or `s3://bucket/prefix`. S3 goes through plain boto3, so
   MinIO is selected with the standard `AWS_ENDPOINT_URL_S3` variable, not a code path of its own.
 - **`quake-lake silver`** rebuilds silver (`$SILVER_URI`, else `lake/silver`) from every
@@ -316,6 +367,16 @@ draws the lineage:
 ![dbt's lineage graph: the silver events and province sources, through staging and int_earthquakes, to fct_earthquakes, dim_province and the two aggregates](docs/img/gold-lineage.png)
 
 <sub>dbt's generated docs (`make docs`), lineage view, captured with headless Chrome.</sub>
+
+- **`make dashboard`** (`streamlit run src/quake_lake/dashboard.py`) serves the dashboard on
+  http://127.0.0.1:8501. It reads `fct_earthquakes` joined to `dim_province` from `$GOLD_DB`
+  (else `lake/gold.duckdb`) and draws four views of the same filtered rows: a map of every
+  earthquake (circle size by magnitude, darker blue for deeper, a tooltip each), a province
+  leaderboard (earthquakes, M5+, the largest), earthquakes per UTC month and per 0.1 of
+  magnitude, under four headline numbers. The sidebar filters by year, minimum magnitude and
+  whether to include the earthquakes USGS places in another country (off by default, as in
+  the marts). Streamlit and pydeck are the `dashboard` extra (in the dev group, so `uv sync`
+  installs them); `.streamlit/config.toml` keeps it on 127.0.0.1 with no telemetry.
 
 - **`docker compose up -d --wait`** (or `make airflow`) starts MinIO, Postgres and Airflow
   3.3 (LocalExecutor: an API server, a scheduler that runs the tasks, a DAG processor). The
@@ -368,11 +429,13 @@ Needs [uv](https://docs.astral.sh/uv/) and GNU make; Docker for MinIO.
 git clone https://github.com/Julminus/quake-lake && cd quake-lake
 uv sync
 uv run quake-lake bmkg && uv run quake-lake usgs --since 2026-01-01   # into lake/bronze
-uv run quake-lake silver                     # typed Parquet in lake/silver
-make gold                                    # dbt build: lake/gold.duckdb, tests included
+make silver gold     # typed Parquet in lake/silver, then dbt build: lake/gold.duckdb
+make dashboard       # Streamlit on gold: http://127.0.0.1:8501 (Ctrl+C stops it)
 ```
 
-Then ask gold something, for instance the provinces with the most M5+ earthquakes:
+`--since 2015-01-01` fetches the whole history instead (about 2.5 minutes). The dashboard
+reads `$GOLD_DB`, else `lake/gold.duckdb`, and picks up a rebuilt gold on its next rerun.
+Or ask gold directly, for instance for the provinces with the most M5+ earthquakes:
 
 ```bash
 uv run python -c "import duckdb; print(duckdb.connect('lake/gold.duckdb').sql('select province, count(*) as m5_plus from fct_earthquakes join dim_province using (province_code) where in_indonesia and magnitude >= 5 group by 1 order by 2 desc limit 5'))"
@@ -566,6 +629,20 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   imports them; its bundle is still just `src/` on the runtime's boto3. The CLI image
   carries them all, and dbt too (1,183 MB); the Airflow image builds the same virtualenv
   against its own Python, with `transform/` next to it.
+- **The dashboard reads the fact, not the aggregates.** One query (every earthquake with its
+  province, 26,815 rows in 0.04 s) and pandas does the rest, so one set of filters drives
+  every number on the page: `agg_daily_activity` can't be filtered by magnitude, and
+  `agg_province_magnitude` not by year. The aggregates stay for SQL, and a test checks that
+  the dashboard's province and month counts equal theirs on a gold dbt built. At this size
+  the browser gets every point; at millions, the map would need a hexagon layer or a sample.
+- **The dashboard opens gold read-only and closes it at once.** DuckDB lets one process
+  write a file or others read it, not both: with a reader holding `gold.duckdb` open, `dbt
+  build` failed here with "The process cannot access the file because it is being used by
+  another process". So the dashboard reads in one go and keeps the rows in Streamlit's
+  cache until the file's modification time changes, which also makes a rebuilt gold show up
+  on the next rerun. What's left is the read itself: a dbt run that starts during those
+  hundredths of a second fails (in Airflow, its retry then succeeds), and a dashboard that
+  reads while dbt is writing says so and asks for a reload.
 - **Airflow runs the CLI, from a virtualenv of its own.** Every task but `latest_only` is a
   `BashOperator` calling `/app/.venv/bin/quake-lake` or `/app/.venv/bin/dbt`, the commands
   `make run` and `make freshness` use, so a task fails when its command exits non-zero
@@ -719,7 +796,12 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
 
 ## What's next
 
-- A **Streamlit** dashboard on the gold marts.
+- **The dashboard in the compose stack**, on the Airflow volume's gold. It would compete
+  with the `gold` task for DuckDB's file lock (see the design decisions), so it should read
+  a copy the DAG writes after each build, or the marts as Parquet.
+- **Gold in BigQuery and Looker Studio** (not built; there's no Google Cloud account here):
+  the marts exported as Parquet (DuckDB's `COPY ... TO`), loaded with `bq load
+  --source_format=PARQUET`, and a Looker Studio report on them.
 - **AWS, later:** an apply (then measured: the Lambda's real duration
   and memory, a month's bill); a remote state backend; the gold marts as Parquet in the
   gold bucket, with Glue tables for Athena; dbt reading silver on S3 (its `minio` target

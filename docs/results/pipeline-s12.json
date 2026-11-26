@@ -1,0 +1,136 @@
+{
+  "started_at": "2026-11-26T18:14:25+00:00",
+  "since": "2015-01-01",
+  "seconds": {
+    "bmkg": 0.4,
+    "usgs": 142.32,
+    "silver": 1.03,
+    "gold": 3.44,
+    "freshness": 1.67,
+    "total": 148.86
+  },
+  "cli_output": {
+    "bmkg": [
+      "source=bmkg/ingest_date=2026-11-26/autogempa_20261126T181425Z.json  1 event  407 bytes",
+      "source=bmkg/ingest_date=2026-11-26/gempaterkini_20261126T181425Z.json  15 events  4,192 bytes",
+      "source=bmkg/ingest_date=2026-11-26/gempadirasakan_20261126T181425Z.json  15 events  5,002 bytes",
+      "wrote 3 objects to <lake>\\bronze: 31 events, 9,601 bytes in 0.2 s"
+    ],
+    "usgs": [
+      "source=usgs/ingest_date=2026-11-26/20260701T000000Z_20260801T000000Z.json  266 events  188,501 bytes",
+      "source=usgs/ingest_date=2026-11-26/20260801T000000Z_20260901T000000Z.json  606 events  427,191 bytes",
+      "source=usgs/ingest_date=2026-11-26/20260901T000000Z_20261001T000000Z.json  178 events  126,002 bytes",
+      "source=usgs/ingest_date=2026-11-26/20261001T000000Z_20261101T000000Z.json  205 events  144,607 bytes",
+      "source=usgs/ingest_date=2026-11-26/20261101T000000Z_20261126T181425Z.json  95 events  67,664 bytes",
+      "wrote 143 objects to <lake>\\bronze: 26,806 events, 19,020,953 bytes in 142.2 s"
+    ],
+    "silver": [
+      "read 146 bronze objects, 26,837 records",
+      "quarantined 0 records (quarantine/events.jsonl)",
+      "dropped 4 repeats of an event id",
+      "merged 17 BMKG events into the USGS event it matches",
+      "wrote 26,816 events in 143 monthly partitions to <lake>\\silver in 0.8 s"
+    ],
+    "gold": [
+      "18:16:52  ",
+      "18:16:52  Finished running 1 incremental model, 2 seeds, 3 table models, 41 data tests, 2 unit tests, 3 view models in 0 hours 0 minutes and 0.91 seconds (0.91s).",
+      "18:16:52  ",
+      "18:16:52  Completed successfully",
+      "18:16:52  ",
+      "18:16:52  Done. PASS=52 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=52"
+    ],
+    "freshness": [
+      "18:16:54  ",
+      "18:16:54  1 of 1 START freshness of silver.events ........................................ [RUN]",
+      "18:16:54  1 of 1 PASS freshness of silver.events ......................................... [PASS in 0.02s]",
+      "18:16:54  ",
+      "18:16:54  Finished running 1 source in 0 hours 0 minutes and 0.09 seconds (0.09s).",
+      "18:16:54  Done."
+    ]
+  },
+  "bronze": {
+    "objects": 146,
+    "bytes": 19030554,
+    "usgs_objects": 143
+  },
+  "silver": {
+    "records": 26837,
+    "quarantined": 0,
+    "repeats_dropped": 4,
+    "bmkg_merged": 17,
+    "events": 26816,
+    "partitions": 143,
+    "records_not_kept_as_events_pct": 0.08,
+    "parquet_bytes": 3137284
+  },
+  "gold": {
+    "fct_earthquakes": 26815,
+    "dim_province": 38,
+    "agg_daily_activity": 4348,
+    "agg_province_magnitude": 122,
+    "fct_earthquakes_in_indonesia": 20654
+  },
+  "checks": {
+    "bronze_shape_check_per_object": 1,
+    "silver_typed_columns": 13,
+    "silver_value_checks": 8,
+    "dbt_nodes": {
+      "test": 41,
+      "seed": 2,
+      "model": 7,
+      "unit_test": 2
+    },
+    "dbt_statuses": {
+      "pass": 43,
+      "success": 9
+    },
+    "dbt_elapsed_seconds": 0.91
+  },
+  "dashboard": {
+    "rows_loaded": 26815,
+    "query_seconds": 0.037,
+    "apptest_render_seconds": [
+      0.56,
+      0.28,
+      0.28
+    ],
+    "metrics": {
+      "Earthquakes": "20,654",
+      "M5 and up": "2,173",
+      "M6 and up": "150",
+      "Largest": "M7.8"
+    },
+    "top_provinces": [
+      {
+        "province": "Maluku",
+        "earthquakes": 3945,
+        "m5_plus": 333,
+        "largest": 7.6
+      },
+      {
+        "province": "Maluku Utara",
+        "earthquakes": 3618,
+        "m5_plus": 324,
+        "largest": 7.4
+      },
+      {
+        "province": "Sulawesi Utara",
+        "earthquakes": 2061,
+        "m5_plus": 222,
+        "largest": 6.3
+      },
+      {
+        "province": "Nusa Tenggara Timur",
+        "earthquakes": 1596,
+        "m5_plus": 173,
+        "largest": 7.8
+      },
+      {
+        "province": "Papua",
+        "earthquakes": 1101,
+        "m5_plus": 145,
+        "largest": 7.0
+      }
+    ]
+  }
+}

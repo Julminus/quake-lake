@@ -1,10 +1,11 @@
-# Measured results (S7 2026-11-20, S8 2026-11-21, S9 2026-11-22, S10 2026-11-23, S11 2026-11-25)
+# Measured results (S7 2026-11-20, S8 2026-11-21, S9 2026-11-22, S10 2026-11-23, S11 2026-11-25, S12 2026-11-26)
 
 Everything was measured on one PC: Windows 11, Ryzen 7 9800X3D, a home connection in
 Indonesia, Docker 29.9.3. The README quotes these files.
 
 | File | What | How |
 |---|---|---|
+| `pipeline-s12.json` | The quickstart's commands from an empty folder, each a separate process and timed: `quake-lake bmkg`, `quake-lake usgs --since 2015-01-01`, `quake-lake silver`, `dbt build`, `dbt source freshness`; the last lines each printed; bronze's objects and bytes; silver's counts (records, quarantined, repeats, BMKG merges, events); the rows in each mart; the data-quality checks that ran (pandera's typed columns and value checks, counted from the schema; dbt's nodes and their statuses from `run_results.json`); and the dashboard on that gold: its query's rows and time, three headless renders with Streamlit's `AppTest` (the first reads gold, the others come from the cache), the four headline numbers and the top five provinces. `docs/img/dashboard.png` is the same gold in Chrome. The run printed this PC's path in `cli_output`; the script now writes `<lake>` for it, and the file was edited the same way | `uv run python scripts/measure_pipeline.py --lake <new folder>` (network: about 2.5 minutes); then `GOLD_DB=<lake>/gold.duckdb make dashboard` and `uv run python scripts/screenshot_dashboard.py` |
 | `backfill-s7.json` | Full USGS backfill, 2015-01-01 to 18:58 UTC on 2026-11-20, into a local folder, with gzip | `uv run python scripts/measure_backfill.py --bronze lake/bronze --out docs/results/backfill-s7.json` (empty `lake/` first) |
 | `backfill-s7-minio.json` | The same backfill into MinIO (`compose.yaml`), two minutes later | the same script with `--bronze s3://lake/measure-s7/bronze` and the MinIO variables from `.env.example` |
 | `backfill-s7-before-gzip.json` | The first backfill, before `fetch()` asked for gzip | the script as of commit `1a8613f`, which did not yet time storage writes (no `storage_put_seconds_total`) |
@@ -22,6 +23,18 @@ Indonesia, Docker 29.9.3. The README quotes these files.
 
 ## Measured by hand (no file)
 
+- **Test suite, S12:** `uv run pytest -q -p no:cacheprovider`, three runs: 15.04, 15.22 and
+  15.26 s, 203 passed and 15 skipped on Windows (8 more than S11, all in
+  `tests/test_dashboard.py`, about 2 s together). With `--cov` the same suite takes about
+  24 s.
+- **Where `pipeline-s12.json`'s 4 repeats come from:** all from BMKG. Parsing the bronze of
+  that run with silver's own readers, its 31 BMKG records carry 27 distinct event ids, and
+  the 26,806 USGS events 26,806 distinct ids.
+- **A reader blocks `dbt build` (S12):** with one process holding `lake/gold.duckdb` open
+  read-only (`duckdb.connect(..., read_only=True)` and a 25 s sleep), `dbt build` in another
+  failed with `IO Error: Cannot open file ... The process cannot access the file because it
+  is being used by another process`; once the reader closed, the same build passed (52 of
+  52). This is why the dashboard reads gold in one go and closes it.
 - **Test suite, S11:** `uv run pytest -q -p no:cacheprovider`, three runs (the compose
   stack's MinIO was running, which the tests don't use without `QUAKE_LAKE_MINIO=1`):
   15.61, 13.91 and 13.84 s, 195 passed and 15 skipped on Windows (8 more than S10, all in
