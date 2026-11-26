@@ -3,10 +3,11 @@
 A medallion-architecture data pipeline for Indonesian earthquake data: USGS and BMKG feeds land
 raw in a bronze layer on S3 (or MinIO, or a local folder), become one typed, deduplicated
 Parquet table in silver, and are modelled with dbt and DuckDB into gold marts that a
-Streamlit dashboard reads; an Airflow DAG runs it once a day. Terraform describes the AWS
-deployment (S3, a scheduled Lambda, Glue and Athena), planned and tested but never applied.
-Everything runs on a laptop: `docker compose up` starts MinIO and Airflow and runs the
-pipeline; without Docker, bronze and silver go to a folder and gold to a DuckDB file.
+Streamlit dashboard reads; an Airflow DAG runs the pipeline once a day. Terraform
+describes the AWS deployment (S3, a scheduled Lambda, Glue and Athena), planned and tested
+but never applied. Everything runs on a laptop: `docker compose up` starts MinIO and
+Airflow and runs the pipeline; without Docker, bronze and silver go to a folder and gold to
+a DuckDB file.
 
 [![CI](https://github.com/Julminus/quake-lake/actions/workflows/ci.yml/badge.svg)](https://github.com/Julminus/quake-lake/actions/workflows/ci.yml)
 ![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
@@ -18,7 +19,7 @@ and the Airflow DAG that runs the pipeline daily are built and measured. The AWS
 in [`infra/`](infra/) is Terraform that plans and passes its offline tests; it has not been
 applied to an AWS account. See [What's next](#whats-next).
 
-![The quake-lake dashboard: 20,654 Indonesian earthquakes since 2015, 2,173 of M5 and up, 150 of M6 and up, the largest M7.8; a map of every earthquake, a province leaderboard led by Maluku, earthquakes per month and a magnitude histogram](docs/img/dashboard.png)
+![The quake-lake dashboard: 20,654 Indonesian earthquakes since 2015, 2,173 of M5 and up, 150 of M6 and up, the largest M7.8; a map of the earthquakes, a province leaderboard led by Maluku, earthquakes per month and a magnitude histogram](docs/img/dashboard.png)
 
 <sub>The dashboard (`make dashboard`) on the gold of the end-to-end run below, captured with
 headless Chrome by `scripts/screenshot_dashboard.py`.</sub>
@@ -34,20 +35,21 @@ Where each number comes from, and how to re-run it, is in
 
 ### End to end, from an empty folder
 
-The quickstart's commands with the whole history (`--since 2015-01-01`), each timed as a
-separate process, then the dashboard on the gold they built (`scripts/measure_pipeline.py`,
-starting 18:14 UTC on 2026-11-26):
+The quickstart's commands with the whole history (`--since 2015-01-01`) and `dbt source
+freshness`, each timed as a separate process, then the dashboard on the gold they built
+(`scripts/measure_pipeline.py`, starting 18:46 UTC on 2026-11-26):
 
 | Step | Command | Time | In → out |
 |---|---|---|---|
-| Bronze | `quake-lake bmkg` | 0.4 s | 3 BMKG feeds → 3 objects, 31 records |
-| Bronze | `quake-lake usgs --since 2015-01-01` | 142.3 s | 143 monthly requests → 143 objects, 26,806 events, 19.0 MB |
-| Silver | `quake-lake silver` | 1.0 s | 146 objects, 26,837 records → 26,816 events in 143 Parquet files, 3.1 MB |
-| Gold | `dbt build` | 3.4 s | 26,815 earthquakes (20,654 Indonesian), 38 provinces, 4,348 days, 122 province and magnitude rows |
+| Bronze | `quake-lake bmkg` | 0.5 s | 3 BMKG feeds → 3 objects, 31 records |
+| Bronze | `quake-lake usgs --since 2015-01-01` | 143.1 s | 143 monthly requests → 143 objects, 26,806 events, 19.0 MB |
+| Silver | `quake-lake silver` | 1.1 s | 146 objects, 26,837 records → 26,816 events in 143 Parquet files, 3.1 MB |
+| Gold | `dbt build` | 4.0 s | 26,815 earthquakes (20,654 Indonesian), 38 provinces, 4,348 days, 122 province and magnitude rows |
 | Freshness | `dbt source freshness` | 1.7 s | the newest event is recent: pass |
-| **All** | | **148.9 s** | |
+| **All** | | **150.3 s** | |
 
-Each time includes the command's start-up and, for dbt, a first parse of the project.
+Each time includes the command's start-up; `dbt build`'s also includes a first parse of the
+project.
 
 - **21 of the 26,837 records (0.08%) are not events of their own.** 4 are repeats (BMKG's
   three feeds share events) and 17 are BMKG events folded into the USGS event they match. A
@@ -57,14 +59,16 @@ Each time includes the command's start-up and, for dbt, a first parse of the pro
   eruption (26,816 events, 26,815 earthquakes).
 - **The data-quality checks, all passed.** Each of the 146 bronze objects had the shape of
   its feed before it was written. pandera typed 13 fields of each of the 26,837 records and
-  applied 8 value checks (a non-empty id, a known source, a time after 1900 and not after
+  applied 8 value checks (a non-empty id, a known source, a time from 1900 to an hour after
   the fetch, coordinates inside the box, a depth from -10 to 800 km, a magnitude from -2 to
-  10) before deduplication: 0 quarantined. `dbt build` ran 41 data tests and 2 unit tests
-  between its 7 models and 2 seeds: 43 passed. `dbt source freshness` passed.
-- **The dashboard:** its query returns all 26,815 earthquakes in 0.04 s, and the page,
-  rendered headless with Streamlit's `AppTest`, takes 0.56 s the first time (reading gold)
-  and 0.28 s from Streamlit's cache. With the default filters it shows 20,654 Indonesian
-  earthquakes since 2015, 2,173 of M5 and up, 150 of M6 and up, the largest M7.8, and
+  10 or none) before deduplication: 0 quarantined. `dbt build` ran 41 data tests and 2
+  unit tests between its 7 models and 2 seeds: 43 passed. `dbt source freshness` passed.
+- **The dashboard:** its query returns all 26,815 earthquakes in 0.04 s. Rendered headless
+  with Streamlit's `AppTest`, the page takes 0.25 to 0.27 s with the rows in Streamlit's
+  cache and 0.28 to 0.29 s when it reads gold again (0.72 s the first time in a process,
+  mostly warm-up); the map's points are 5.6 MB of JSON. With the default filters it shows
+  20,654 Indonesian earthquakes since 2015, 2,173 of M5 and up, 150 of M6 and up, the
+  largest M7.8, and
   Maluku (3,945), Maluku Utara (3,618) and Sulawesi Utara (2,061) at the top of the
   provinces (the screenshot above).
 
@@ -255,17 +259,20 @@ From empty volumes, with the images built (`scripts/measure_airflow.py`):
 
 ### Tests
 
-- **216 offline tests** (recorded responses and small built records; one concurrency test
-  runs on Linux only) at 100% branch coverage of the Python package (CI fails below 90%),
-  in 15.0 to 15.3 s (three runs). 5 of them run dbt (about 8 s of that), and one of those
-  also checks the dashboard's province and month counts against the aggregate marts. 8
-  check `infra/` from Python (the Glue table matches silver's schema; the cost estimate
-  reads the right numbers from the Terraform). 8 test the dashboard, 6 of them by running
-  it headless with Streamlit's `AppTest` on a small gold (the default view, the filters, a
-  rebuilt gold, and a gold that is missing, empty or without the marts; 2 s in all). 12
-  test the Airflow DAG and need Airflow, so they skip outside its image and CI runs them
-  inside it. Two more run against a real MinIO (a storage round trip and a silver
-  rebuild); CI runs them too. The Terraform has 5 tests of its own (above).
+- **219 offline tests** (recorded responses and small built records) at 100% branch
+  coverage of the Python package (CI fails below 90%). On Windows 206 of them run, in 16.2
+  to 16.4 s (three runs; about 25 s with coverage); the other 13 are the 12 that test the
+  Airflow DAG and need Airflow, which CI runs inside its image, and one concurrency test
+  that runs on Linux only. 5 run dbt (about 8 s), and one of those also checks the
+  dashboard's province and month counts against the aggregate marts. 8 check `infra/` from
+  Python (the Glue table matches silver's schema; the cost estimate reads the right numbers
+  from the Terraform). 11 test the dashboard, 9 of them by running it headless with
+  Streamlit's `AppTest` on a small gold (the filters, read back from the metrics, the
+  table, the map's points and both charts' data; a one-year gold, an event with no
+  magnitude or no province; a rebuilt, missing or empty gold; 3 s in all): of 18 bugs
+  planted in the dashboard one at a time, all 18 fail a test. Two more run against a real
+  MinIO (a storage round trip and a silver rebuild); CI runs them too. The Terraform has 5
+  tests of its own (above).
 
 ## How it works
 
@@ -370,8 +377,8 @@ draws the lineage:
 
 - **`make dashboard`** (`streamlit run src/quake_lake/dashboard.py`) serves the dashboard on
   http://127.0.0.1:8501. It reads `fct_earthquakes` joined to `dim_province` from `$GOLD_DB`
-  (else `lake/gold.duckdb`) and draws four views of the same filtered rows: a map of every
-  earthquake (circle size by magnitude, darker blue for deeper, a tooltip each), a province
+  (else `lake/gold.duckdb`) and draws four views of the same filtered rows: a map with a
+  circle for each (size by magnitude, darker blue for deeper, a tooltip each), a province
   leaderboard (earthquakes, M5+, the largest), earthquakes per UTC month and per 0.1 of
   magnitude, under four headline numbers. The sidebar filters by year, minimum magnitude and
   whether to include the earthquakes USGS places in another country (off by default, as in
@@ -438,7 +445,7 @@ reads `$GOLD_DB`, else `lake/gold.duckdb`, and picks up a rebuilt gold on its ne
 Or ask gold directly, for instance for the provinces with the most M5+ earthquakes:
 
 ```bash
-uv run python -c "import duckdb; print(duckdb.connect('lake/gold.duckdb').sql('select province, count(*) as m5_plus from fct_earthquakes join dim_province using (province_code) where in_indonesia and magnitude >= 5 group by 1 order by 2 desc limit 5'))"
+uv run python -c "import duckdb; print(duckdb.connect('lake/gold.duckdb').sql('select province, count(*) as m5_plus from fct_earthquakes join dim_province using (province_code) where in_indonesia and magnitude >= 5 group by 1 order by 2 desc limit 5').fetchall())"
 ```
 
 **The whole pipeline on Airflow**, with Docker only (the first `up` pulls the images it
@@ -641,8 +648,8 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
   another process". So the dashboard reads in one go and keeps the rows in Streamlit's
   cache until the file's modification time changes, which also makes a rebuilt gold show up
   on the next rerun. What's left is the read itself: a dbt run that starts during those
-  hundredths of a second fails (in Airflow, its retry then succeeds), and a dashboard that
-  reads while dbt is writing says so and asks for a reload.
+  hundredths of a second fails (run it again), and a dashboard that reads while dbt is
+  writing says so and asks for a reload.
 - **Airflow runs the CLI, from a virtualenv of its own.** Every task but `latest_only` is a
   `BashOperator` calling `/app/.venv/bin/quake-lake` or `/app/.venv/bin/dbt`, the commands
   `make run` and `make freshness` use, so a task fails when its command exits non-zero
