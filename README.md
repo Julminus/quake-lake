@@ -275,7 +275,7 @@ From empty volumes, with the images built (`scripts/measure_airflow.py`):
   dashboard one at a time: 32 fail a test; the one left is the cache's size limit, which
   changes memory, not the page ([`mutations-s12.txt`](docs/results/mutations-s12.txt)).
   Two reviews got there: the first tests let 8 of a reviewer's 11 bugs through, the second
-  12 of another's 12, all in the map. Two more run against a real
+  12 of another's 12, most of them in the map's details. Two more run against a real
   MinIO (a storage round trip and a silver rebuild); CI runs them too. The Terraform has 5
   tests of its own (above).
 
