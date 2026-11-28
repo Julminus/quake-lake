@@ -17,7 +17,8 @@ a DuckDB file.
 sources, provinces), gold (dbt models, tests and an incremental fact table), the dashboard
 and the Airflow DAG that runs the pipeline daily are built and measured. The AWS deployment
 in [`infra/`](infra/) is Terraform that plans and passes its offline tests; it has not been
-applied to an AWS account. See [What's next](#whats-next).
+applied to an AWS account. See [What's next](#whats-next). Claude Code wrote the code, the
+tests and this README: see [How this was built](#how-this-was-built).
 
 ![The quake-lake dashboard: 20,654 Indonesian earthquakes since 2015, 2,173 of M5 and up, 150 of M6 and up, the largest M7.8; a map of the earthquakes, a province leaderboard led by Maluku, earthquakes per month and a magnitude histogram](docs/img/dashboard.png)
 
@@ -239,7 +240,7 @@ From empty volumes, with the images built (`scripts/measure_airflow.py`):
   4.0 to 4.2 s, 5.8 to 6.0 s in all ([`lambda-s11.log`](docs/results/lambda-s11.log)).
   128 MB would bill fewer GB-seconds
   (0.76 against 1.09 for the slowest cold start, about $0.004 a month less); for an hourly
-  poll either is fine, and I took the faster one.
+  poll either is fine, so the faster one it is.
 - **Checks:** `terraform fmt`, `terraform validate`, `tflint` with the AWS ruleset on the
   root and every module (no findings), and 5 `terraform test` runs against a mocked AWS
   provider, which check what the modules build: public access blocked and plain HTTP denied
@@ -805,6 +806,59 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
 - **MinIO from Chainguard.** MinIO stopped publishing community images in 2025 (`minio/minio`
   is gone from Docker Hub), so `compose.yaml` uses Chainguard's build from source, pinned by
   digest. Its ports bind to 127.0.0.1 only.
+
+## How this was built
+
+[Claude Code](https://claude.com/claude-code), Anthropic's coding agent running Claude Opus,
+wrote this repository in six sessions, each one layer of a written plan (the plan is not in
+the repository). Each session was a headless run started at 01:00 by a scheduled task.
+Every commit these sessions made carries a `Co-Authored-By: Claude Opus 5.5` trailer and was
+made under the repository owner's git identity. Dates are UTC+7, as in the commit history.
+
+| Session | Layer | Commits | Review rounds |
+|---|---|---|---|
+| S7 | Bronze: USGS and BMKG ingestion, storage, the Lambda handler | 2026-11-21: 26 | 4 |
+| S8 | Silver: typed Parquet, validation, deduplication, provinces | 2026-11-22: 15 | 3 |
+| S9 | Gold: the dbt models and tests | 2026-11-23: 15 | 3 |
+| S10 | The Airflow DAG and the compose stack | 2026-11-24: 6, then 2026-11-25: 16 (the first run hit a usage limit before its review; the next night's run finished it) | 4 |
+| S11 | Terraform for AWS, planned and not applied | 2026-11-26: 21 | 3 |
+| S12 | The dashboard and this README | 2026-11-27: 13 | 4 |
+
+**What Claude wrote:** the code, the tests, the dbt project, the DAG, the Terraform, the CI
+workflow, `compose.yaml` and the Dockerfile, this README and `docs/`, the seeds in
+`transform/seeds/` (among them which USGS place names count as another country) and the
+province reference table (`src/quake_lake/provinces.csv`, built by
+`scripts/build_provinces.py` from OCHA's data). The earthquake data is USGS's and BMKG's
+([Data and credits](#data-and-credits)).
+
+**What checked it:**
+
+- Before every commit, the staged files were exported to an empty folder, installed with
+  `uv sync --locked` and run through ruff, mypy (strict) and pytest with coverage, plus the
+  Terraform checks from S11 (`scripts/verify_staged.sh`). At the last commit that is the
+  tests in [Tests](#tests): 222 (220 offline, 2 against MinIO), 100% branch coverage; and
+  dbt's 41 data tests and 2 unit tests, the 5 Terraform test runs, and the planted-bug runs
+  (47 of 48 caught in `infra/`, 32 of 33 in the dashboard).
+- CI on GitHub: 34 runs from 2026-11-21 to 2026-11-27. 31 green, 1 cancelled by a newer push,
+  2 red: a CI step that looked for an error message the code no longer printed (`28d1d2e`,
+  fixed in `bca00f1`), and a Terraform lock file with no Linux hashes (`892f255`, fixed in
+  `2c2e7ac`).
+- At the end of each session, Claude reviewer agents that hadn't written the code reviewed the
+  session's changes: for bugs, and the README's claims against the raw results files. Each
+  round of fixes went to a new reviewer, until a round found nothing of medium severity or
+  higher: 21 rounds in all (table). Their fixes are the `fix:`, `test:` and `docs:` commits
+  at the end of each session. These were AI reviews.
+- Each session's README commands were re-run from a fresh clone of this repository at its end.
+
+**What no person has checked yet** (as of 2026-11-28):
+
+- **The AWS deployment.** `infra/` has never been applied, so the Lambda's timings are
+  emulated on a PC and the cost is an estimate ([`aws-cost-estimate.md`](docs/aws-cost-estimate.md)).
+- **What counts as an Indonesian earthquake.** The rule (Indonesian unless USGS's place names
+  another country) is a default chosen in S9 and still open; its measured limit is under
+  "The country list is a seed, not code" in the design decisions.
+- **The provinces.** Each event's province was measured against OCHA's polygons (93.5% agree,
+  [Silver](#silver)), not spot-checked by someone who knows the places.
 
 ## What's next
 

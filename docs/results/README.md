@@ -50,8 +50,8 @@ Indonesia, Docker 29.9.3. The README quotes these files.
   (three runs each, after the review's fixes) once `infra/` is initialised (`terraform
   plan` alone 2.0 s); the first `terraform init`
   downloaded both providers in 9.8 s. On GitHub the `terraform` job took 30 s (run
-  45675288281). The first version of the tests, before the review: of 12 bugs I planted one
-  at a time, 11 made `terraform test` fail, but of 14 more a reviewer planted (permissions
+  45675288281). The first version of the tests, before the review: of 12 bugs Claude planted
+  one at a time, 11 made `terraform test` fail, but of 14 more a reviewer planted (permissions
   wired to the wrong rule, `s3:*` or `glue:*` in a policy, a lost condition, the pipeline
   policy, partition key types, ...), 13 passed. The tests were rewritten to compare every
   policy whole; then a second reviewer's 24 mutations found the root's wiring untested (the
