@@ -5,7 +5,7 @@ raw in a bronze layer on S3 (or MinIO, or a local folder), become one typed, ded
 Parquet table in silver, and are modelled with dbt and DuckDB into gold marts that a
 Streamlit dashboard reads; an Airflow DAG runs the pipeline once a day. Terraform
 describes the AWS deployment (S3, a scheduled Lambda, Glue and Athena), planned and tested
-but never applied. Everything runs on a laptop: `docker compose up` starts MinIO and
+but never applied. Everything runs on one machine: `docker compose up` starts MinIO and
 Airflow and runs the pipeline; without Docker, bronze and silver go to a folder and gold to
 a DuckDB file.
 
@@ -204,8 +204,8 @@ From empty volumes, with the images built (`scripts/measure_airflow.py`):
 - **Retries:** with MinIO stopped as a run started, `bmkg` and `usgs` both needed a second
   try. MinIO was started again once one of them was waiting for its retry, and after the
   2-minute retry delay both succeeded. The run succeeded in 141.5 s.
-- **The deadline alert fires:** with the interval set to 1 s for one run, the
-  callback logged the miss 3 s after the deadline
+- **The deadline alert fires:** with the DAG's deadline edited to 1 s for one run (the
+  committed value is 1 hour), the callback logged the miss 3 s after the deadline
   ([`deadline-s10.log`](docs/results/deadline-s10.log), 2026-11-23).
 - **Memory:** 1,294 MiB with the stack idle (scheduler 741, API server 267, DAG
   processor 155, MinIO 71, Postgres 60); during the whole-history run the scheduler peaked
@@ -240,7 +240,7 @@ From empty volumes, with the images built (`scripts/measure_airflow.py`):
   4.0 to 4.2 s, 5.8 to 6.0 s in all ([`lambda-s11.log`](docs/results/lambda-s11.log)).
   128 MB would bill fewer GB-seconds
   (0.76 against 1.09 for the slowest cold start, about $0.004 a month less); for an hourly
-  poll either is fine, so the Lambda uses 256 MB.
+  poll either is fine, so the Lambda uses the faster 256 MB.
 - **Checks:** `terraform fmt`, `terraform validate`, `tflint` with the AWS ruleset on the
   root and every module (no findings), and 5 `terraform test` runs against a mocked AWS
   provider, which check what the modules build: public access blocked and plain HTTP denied
@@ -838,7 +838,8 @@ province reference table (`src/quake_lake/provinces.csv`, built by
 - Before every commit, the staged files were exported to an empty folder, installed with
   `uv sync --locked` and run through ruff, mypy (strict) and pytest with coverage on
   Windows, plus the Terraform checks from S11 (`scripts/verify_staged.sh`). At the last
-  commit, 207 of the 222 tests ran there (5 of them run dbt on a small gold); CI runs the
+  session commit (`57047aa`), 207 of the 222 tests ran there, at 100% branch coverage (5 of
+  them run `dbt build`, with its 41 data tests and 2 unit tests, on a small gold); CI runs the
   other 15 (the Airflow DAG tests in the Airflow image, a Linux-only test and the 2 against
   MinIO). See [Tests](#tests).
 - Run during the sessions, not on every commit: the planted-bug runs (47 of 48 caught in
