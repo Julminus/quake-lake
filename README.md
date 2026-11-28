@@ -204,7 +204,7 @@ From empty volumes, with the images built (`scripts/measure_airflow.py`):
 - **Retries:** with MinIO stopped as a run started, `bmkg` and `usgs` both needed a second
   try. MinIO was started again once one of them was waiting for its retry, and after the
   2-minute retry delay both succeeded. The run succeeded in 141.5 s.
-- **The deadline alert fires:** with the interval set to 1 s by hand for one run, the
+- **The deadline alert fires:** with the interval set to 1 s for one run, the
   callback logged the miss 3 s after the deadline
   ([`deadline-s10.log`](docs/results/deadline-s10.log), 2026-11-23).
 - **Memory:** 1,294 MiB with the stack idle (scheduler 741, API server 267, DAG
@@ -240,7 +240,7 @@ From empty volumes, with the images built (`scripts/measure_airflow.py`):
   4.0 to 4.2 s, 5.8 to 6.0 s in all ([`lambda-s11.log`](docs/results/lambda-s11.log)).
   128 MB would bill fewer GB-seconds
   (0.76 against 1.09 for the slowest cold start, about $0.004 a month less); for an hourly
-  poll either is fine, so the faster one it is.
+  poll either is fine, so the Lambda uses 256 MB.
 - **Checks:** `terraform fmt`, `terraform validate`, `tflint` with the AWS ruleset on the
   root and every module (no findings), and 5 `terraform test` runs against a mocked AWS
   provider, which check what the modules build: public access blocked and plain HTTP denied
@@ -811,16 +811,18 @@ tests, set the MinIO variables from `.env.example` and `QUAKE_LAKE_MINIO=1`, the
 
 [Claude Code](https://claude.com/claude-code), Anthropic's coding agent running Claude Opus,
 wrote this repository in six sessions, each one layer of a written plan (the plan is not in
-the repository). Each session was a headless run started at 01:00 by a scheduled task.
-Every commit these sessions made carries a `Co-Authored-By: Claude Opus 5.5` trailer and was
-made under the repository owner's git identity. Dates are UTC+7, as in the commit history.
+the repository); a later session added this section. Each session was a headless run started
+at 01:00 by a scheduled task. Every commit these sessions made carries a
+`Co-Authored-By: Claude Opus 5.5` trailer and was made under the repository owner's git
+identity. Dates are UTC+7, as in the commit history. The commits and CI runs can be checked
+here; the review rounds and the local checks come from the build log, which isn't public.
 
 | Session | Layer | Commits | Review rounds |
 |---|---|---|---|
 | S7 | Bronze: USGS and BMKG ingestion, storage, the Lambda handler | 2026-11-21: 26 | 4 |
 | S8 | Silver: typed Parquet, validation, deduplication, provinces | 2026-11-22: 15 | 3 |
 | S9 | Gold: the dbt models and tests | 2026-11-23: 15 | 3 |
-| S10 | The Airflow DAG and the compose stack | 2026-11-24: 6, then 2026-11-25: 16 (the first run hit a usage limit before its review; the next night's run finished it) | 4 |
+| S10 | The Airflow DAG and the compose stack | 2026-11-24: 6, then 2026-11-25: 16 (the first run hit a usage limit during its first review round; the next night's run finished it) | 4 |
 | S11 | Terraform for AWS, planned and not applied | 2026-11-26: 21 | 3 |
 | S12 | The dashboard and this README | 2026-11-27: 13 | 4 |
 
@@ -834,23 +836,26 @@ province reference table (`src/quake_lake/provinces.csv`, built by
 **What checked it:**
 
 - Before every commit, the staged files were exported to an empty folder, installed with
-  `uv sync --locked` and run through ruff, mypy (strict) and pytest with coverage, plus the
-  Terraform checks from S11 (`scripts/verify_staged.sh`). At the last commit that is the
-  tests in [Tests](#tests): 222 (220 offline, 2 against MinIO), 100% branch coverage; and
-  dbt's 41 data tests and 2 unit tests, the 5 Terraform test runs, and the planted-bug runs
-  (47 of 48 caught in `infra/`, 32 of 33 in the dashboard).
-- CI on GitHub: 34 runs from 2026-11-21 to 2026-11-27. 31 green, 1 cancelled by a newer push,
-  2 red: a CI step that looked for an error message the code no longer printed (`28d1d2e`,
-  fixed in `bca00f1`), and a Terraform lock file with no Linux hashes (`892f255`, fixed in
-  `2c2e7ac`).
+  `uv sync --locked` and run through ruff, mypy (strict) and pytest with coverage on
+  Windows, plus the Terraform checks from S11 (`scripts/verify_staged.sh`). At the last
+  commit, 207 of the 222 tests ran there (5 of them run dbt on a small gold); CI runs the
+  other 15 (the Airflow DAG tests in the Airflow image, a Linux-only test and the 2 against
+  MinIO). See [Tests](#tests).
+- Run during the sessions, not on every commit: the planted-bug runs (47 of 48 caught in
+  `infra/`, 32 of 33 in the dashboard).
+- CI on GitHub during the sessions: 34 runs from 2026-11-21 to 2026-11-27. 31 green, 1
+  cancelled by a newer push, 2 red: on `28d1d2e`, a CI step looked for an error message the
+  code no longer printed (fixed in `bca00f1`); on `892f255`, `terraform validate` found a lock
+  file with no Linux hashes (fixed in `2c2e7ac`).
 - At the end of each session, Claude reviewer agents that hadn't written the code reviewed the
   session's changes: for bugs, and the README's claims against the raw results files. Each
   round of fixes went to a new reviewer, until a round found nothing of medium severity or
-  higher: 21 rounds in all (table). Their fixes are the `fix:`, `test:` and `docs:` commits
-  at the end of each session. These were AI reviews.
+  higher: 21 rounds in all (table). Their fixes are the `fix:`, `test:` and `docs:` commits at
+  the end of each session.
 - Each session's README commands were re-run from a fresh clone of this repository at its end.
 
-**What no person has checked yet** (as of 2026-11-28):
+**What still needs a person** (as of 2026-11-28). Every check above was automated or done by
+AI agents. The results that most need a person:
 
 - **The AWS deployment.** `infra/` has never been applied, so the Lambda's timings are
   emulated on a PC and the cost is an estimate ([`aws-cost-estimate.md`](docs/aws-cost-estimate.md)).
